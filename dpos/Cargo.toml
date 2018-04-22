@@ -1,0 +1,13 @@
+[package]
+name = "dpos"
+version = "0.1.0"
+authors = ["Rg <daimaldd@gmail.com>"]
+
+[dependencies]
+time = "0.1.39"
+chrono = "0.4"
+
+[lib]
+name = "dpos"
+path = "src/lib.rs"
+

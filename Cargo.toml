@@ -1,0 +1,8 @@
+[package]
+name = "consensue"
+version = "0.1.0"
+authors = ["Rg <daimaldd@gmail.com>"]
+
+[dependencies]
+
+dpos = {path = "./dpos"}
