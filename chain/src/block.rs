@@ -1,0 +1,15 @@
+pub struct Block{
+    pub id: String,
+    version: String,
+    pub timestamp: i64,
+    pub height: i64,
+    previousBlock: Vec<u8>,
+    number_of_transactions: isize,
+    total_amount: i64,
+    total_fee: i64,
+    reward: i64,
+    payload_length: isize,
+    payload_hash: Vec<u8>,
+    generator_publickey: String,
+    block_signature: String,
+}

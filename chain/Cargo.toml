@@ -1,9 +1,11 @@
 [package]
-name = "consensue"
+name = "chain"
 version = "0.1.0"
 authors = ["Rg <daimaldd@gmail.com>"]
 
 [dependencies]
+rocksdb = "0.8.1"
 
-dpos = {path = "./dpos"}
-chain = {path = "./chain"}
+[lib]
+name = "chain"
+path = "src/lib.rs"

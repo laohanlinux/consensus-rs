@@ -6,6 +6,7 @@ authors = ["Rg <daimaldd@gmail.com>"]
 [dependencies]
 time = "0.1.39"
 chrono = "0.4"
+chain = {path = "../chain"}
 
 [lib]
 name = "dpos"

@@ -1,4 +1,5 @@
 use slot;
+use chain::block::*;
 use time::Timespec;
 
 // height --> slot_list
@@ -19,6 +20,12 @@ fn get_block_slot_date<'a>(slot: i64, height: i64) -> Option<(&'a str, i64)>{
         return Some((deletegate_id.unwrap(), slot::get_slot_time(_slot)));
     }
     None
+}
+
+pub fn validate_block_slot(block: Block) {
+    // get the height delegates list
+    // let delegates = get_active_delegates()
+    let slot_time = block.timestamp;
 }
 
 #[cfg(test)]

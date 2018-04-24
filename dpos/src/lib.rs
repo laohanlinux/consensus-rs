@@ -1,5 +1,6 @@
 extern crate time;
 extern crate chrono;
+extern crate chain;
 
 mod slot;
 mod block;
