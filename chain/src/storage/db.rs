@@ -73,9 +73,14 @@ impl Patch {
         self.changes.get(name)
     }
 
-    /// Gets the corresponding entry in the map by the given name for in-place manipulation.
+    /// Returns a mutable reference to the changes corresponding to the `name`.
     fn changes_mut(&mut self, name: &str) -> Option<&mut Changes> {
         self.changes.get_mut(name)
+    }
+
+    /// Gets the corresponding entry in the map by the given name for in-place manipulation.
+    fn changes_entry(&mut self, name: String) -> HmEntry<String, Changes> {
+        self.changes.entry(name)
     }
 
     /// Inserts changes with the given name.
@@ -169,6 +174,10 @@ pub trait Database: Send + Sync + 'static {
             logged: false,
         }
     }
+
+    fn merge(&self, patch: Patch) -> Result<()>;
+
+    fn merge_sync(&self, patch: Patch) -> Result<()>;
 }
 
 pub trait Snapshot: 'static {
@@ -189,5 +198,77 @@ pub trait Iterator{
 }
 
 impl Snapshot for Fork {
+    fn get(&self, name: &str, key: &[u8]) -> Option<Vec<u8>> {
+        if let Some(changes) = self.patch.chanegs(name) {
+            if let Some(change) = changes.data.get(key) {
+                match *change {
+                    Change::Put(ref v) => return Some(v.clone()),
+                    Change::Delete => return None,
+                }
+            }
+        }
+        self.snapshot.get(name, key)
+    }
 
+    fn contains(&self, name: &str, key: &[u8]) -> bool {
+        if let Some(changes) = self.patch.chanegs(name) {
+            match *changes {
+                Change::Put(..) => return true,
+                Change::Delete => return false,
+            }
+        }
+        self.snapshot.contains(name, key)
+    }
+
+    fn iter<'a>(&'a self, name: &str, from: &[u8]) -> Iter<'a> {
+        let range = (Included(from), Unbounded);
+        let changes = match self.patch.changes(name) {
+            Some(changes) => Some(changes.data.range::<[u8], _>(range).peekable()),
+            None => None,
+        };
+
+        Box::new(ForkIter {
+            snapshot: self.snapshot.iter(name, from),
+            changes,
+        })
+    }
+}
+
+impl Fork {
+    pub fn checkpoint(&mut self) {
+        if self.logged {
+            panic!("call checkpoint before rollback or commit");
+        }
+        self.logged = true;
+    }
+
+    pub fn commit(&mut self) {
+        if !self.logged {
+            panic!("call commit before checkpoint");
+        }
+        self.changelog.clear();
+        self.logged = false;
+    }
+
+    pub fn rollback(&mut self) {
+        if !self.logged {
+            panic!("call rollback before checkpoint");
+        }
+        // reverse
+        for (name, k , c) in self.changelog.drain(..).rev() {
+            // find the target patch
+            if let Some(changes) = self.patch.changes_mut(&name) {
+                match c {
+                    Some(change) => changes.data.insert(k, change),
+                    None => changes.data.remove(&k),
+                };
+            }
+        }
+        self.logged = false;
+    }
+
+    pub fn put(&mut self, name: &str, key: Vec<u8>, value: Vec<u8>) {
+//        let changes = self.patch
+//            .changes_en
+    }
 }
