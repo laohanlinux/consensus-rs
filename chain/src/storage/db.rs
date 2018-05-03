@@ -268,7 +268,11 @@ impl Fork {
     }
 
     pub fn put(&mut self, name: &str, key: Vec<u8>, value: Vec<u8>) {
-//        let changes = self.patch
-//            .changes_en
+        let changes = self.patch
+            .changes_entry(name.to_string())
+            .or_insert_with(Changes::new);
+        if self.logged {
+            
+        }
     }
 }
