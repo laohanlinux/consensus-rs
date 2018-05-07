@@ -272,7 +272,60 @@ impl Fork {
             .changes_entry(name.to_string())
             .or_insert_with(Changes::new);
         if self.logged {
-            
+            self.changelog.push((
+                name.to_string(),
+                key.clone(),
+                changes.data.insert(key, Change::Put(value)),
+            ));
+        }else {
+            changes.data.insert(key, Change::Put(value));
+        }
+    }
+
+    pub fn remove(&mut self, name: &str, key: Vec<u8>) {
+        let changes: = self.patch
+            .changes_entry(name.to_string())
+            .or_insert_with(Changes::new);
+        if self.logged{
+            self.changeslog.push((
+                name.to_string(),
+                key.clone(),
+                changes.data.insert(key, Change::Delete),
+            ));
+        }else {
+            changes.data.insert(key, Change::Delete);
+        }
+    }
+
+
+    /// Removes all keys starting with the specified prefix from the column familly
+    /// with the given `name`.
+    pub fn remove_by_prefix(&mut self, name: &str, prefix: Option<&Vec<u8>>) {
+        let changes = self.patch
+            .changes_entry(name.to_string())
+            .or_insert_with(Changes::new());
+        // Remove changes
+        if let Some(prefix) = prefix {
+            let keys = changes
+                .data.range::<Vec<u8>, _>((Included(prefix), Unbounded))
+                .map(|(k, _)| k.to_vec())
+                .take_while(|k| k.start_with(prefix))
+                .collect::<Vec<_>>();
+            for k in keys{
+                changes.data.remove(&k);
+            }
+        }else {
+            changes.data.clear();
+        }
+
+        // Remove from storage
+        let mut iter = self.snapshot
+            .iter(name, prefix.map_or(&[], |k| k.as_slice()));
+        while let Some((k, ..)) = iter.next() {
+            let change = changes.data.insert(k.to_vec(), Change::Delete);
+            if self.logged {
+                self.changelog.push((name.to_string(), k.to_vec(), change));
+            }
         }
     }
 }
