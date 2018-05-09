@@ -11,3 +11,4 @@ pub use self::memorydb::MemoryDB;
 mod error;
 mod db;
 mod memorydb;
+mod hash;

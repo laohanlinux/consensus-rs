@@ -328,5 +328,167 @@ impl Fork {
             }
         }
     }
-	
+
+    /// Converts the fork into `Patch`
+    pub fn into_patch(self) -> Patch {
+        self.patch
+    }
+
+    /// Returns reference to the inner `Patch`
+    pub fn patch(&self) -> &Patch {
+        &self.patch
+    }
+
+    /// Merges patch from another fork to this inner `Patch`
+    ///
+    /// If both forks have changed the same data, this can lead to an inconsistent state. Hence,
+    /// this method is useful only if you are sure that forks interacted with different indices.
+    ///
+    /// # Panics
+    ///
+    /// Panics if checkpoint was created before and it was not committed or rolled back yet.
+    pub fn merge(&mut self, patch: Patch) {
+        if self.logged {
+            panic!("call merge before commit or rollback");
+        }
+
+        for (name, changes) in patch {
+            let Some(in_changed) = self.patch.changes_mut(&name) {
+                in_changes.data.extend(changes.into_iter());
+                continue
+            }
+            {
+                self.patch.insert_changes(name.to_owned(), changes);
+            }
+        }
+    }
+}
+
+impl AsRef<Snapshot> for Snapshot + 'static {
+    fn as_ref(&self) -> &Snapshot {
+        self
+    }
+}
+
+impl AsRef<Snapshot> for Fork {
+    fn as_ref(&self) -> &Snapshot{
+        self
+    } 
+}
+
+impl ::std::fmt::Debug for Fork{
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "Frok(..)");
+    }
+}
+
+
+impl<'a> ForkIter<'a> {
+    fn step(&mut self) -> NextIterValue {
+        if let Some(ref mut changes) = self.changes {
+            match changes.peek() {
+                Some(&(k, change)) => match self.snapshot.peek() {
+                    Some((key, ..)) => match *change {
+                        Change::Put(..) => match k[..].cmp(key) {
+                            Equal => Replaced,
+                            Less => Inserted,
+                            Greater => Stored,
+                        },
+                        Change::Delete => match k[..].cmp(key) {
+                            Equal => Deleted,
+                            Less => MissDeleted,
+                            Greater => Stored,
+                        },
+                    },
+                    None => match *change {
+                        Change::Put(..) => Inserted,
+                        Change::Delete => MissDeleted,
+                    },
+                },
+                None => match self.snapshot.peek() {
+                    Some(..) => Stored,
+                    None => Finished,
+                },
+            }
+        } else {
+            match self.snapshot.peek() {
+                Some(..) => Stored,
+                None => Finished,
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for ForkIter<'a> {
+    fn next(&mut self) -> Option<(&[u8], &[u8])> {
+        loop {
+            match self.step() {
+                Stored => return self.snapshot.next(),
+                Replaced => {
+                    self.snapshot.next();
+                    return self.changes.as_mut().unwrap().next().map(|(key, change)| {
+                        (
+                            key.as_slice(),
+                            match *change {
+                                Change::Put(ref value) => value.as_slice(),
+                                Change::Delete => unreachable!(),
+                            },
+                        )
+                    });
+                }
+                Inserted => {
+                    return self.changes.as_mut().unwrap().next().map(|(key, change)| {
+                        (
+                            key.as_slice(),
+                            match *change {
+                                Change::Put(ref value) => value.as_slice(),
+                                Change::Delete => unreachable!(),
+                            },
+                        )
+                    })
+                }
+                Deleted => {
+                    self.changes.as_mut().unwrap().next();
+                    self.snapshot.next();
+                }
+                MissDeleted => {
+                    self.changes.as_mut().unwrap().next();
+                }
+                Finished => return None,
+            }
+        }
+    }
+
+    fn peek(&mut self) -> Option<(&[u8], &[u8])> {
+        loop {
+            match self.step() {
+                Stored => return self.snapshot.peek(),
+                Replaced | Inserted => {
+                    return self.changes.as_mut().unwrap().peek().map(|&(key, change)| {
+                        (
+                            key.as_slice(),
+                            match *change {
+                                Change::Put(ref value) => value.as_slice(),
+                                Change::Delete => unreachable!(),
+                            },
+                        )
+                    })
+                }
+                Deleted => {
+                    self.changes.as_mut().unwrap().next();
+                    self.snapshot.next();
+                }
+                MissDeleted => {
+                    self.changes.as_mut().unwrap().next();
+                }
+                Finished => return None,
+            }
+        }
+    }
+}
+
+impl<T: Database> From<T> for Box<Database> {
+    fn from(db: T) -> Self {
+        Box::new(db) as Box<Database>
+    }
 }

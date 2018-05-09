@@ -61,7 +61,61 @@ impl Snapshot for MemoryDB {
             .read()
             .unwrap()
             .get(name)
-            .and_then(|table|table.get(key).cloned())
+            .and_then(|table| table.get(key).cloned())
     }
 
+    fn contains(&self, name: &str, key: &[u8]) -> bool {
+        self.map
+            .read()
+            .unwrap()
+            .get(name)
+            .map_or(false, |table| table.contains_key(key))
+    }
+
+    fn iter(&self, name: &str, from: &[u8]) -> Iter {
+        let map_guard = self.map.read().unwrap();
+        let data = match map_guard.get(name) {
+            Some(table) => table
+                .iter()
+                .skip_while(|&(k, _)| k.as_slice() < from)
+                .map(|(k, v)| (k.to_vec(), v.to_vec()))
+                .collect(),
+            None => Vec::new(),
+        };
+
+        Box::new(MemoryDBIter { data, index: 0 })
+    }
 }
+
+impl Iterator for MemoryDBIterator{
+    fn next(&mut self) -> Option<(&[u8], &[u8])> {
+        if self.index < self.data.len() {
+            self.index+=1;
+            self.data
+                .get(self.index -1)
+                .map(|&(ref k, ref v)| (k.as_slice(), v.as_slice()))
+        }else {
+            None
+        }
+    }
+
+    fn peek(&mut self) -> Option<(&[u8], &[u8])> {
+        if self.index < self.data.len(){
+            self.data
+                .get(self.index)
+                .map(|&(ref k, ref v)| (k.as_slice(), v.as_slice()))
+        }else {
+            None
+        }
+    }
+}
+
+impl From<MemoryDB> for Arc<Database> {
+    fn from(db: MemoryDB) -> Arc<Database> {
+        Arc::from(Box::new(db) as Box<Database>)
+    }
+}
+
+
+/// TODO
+/// add test
