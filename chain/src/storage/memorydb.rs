@@ -1,4 +1,19 @@
-///! An implementation of `MemoryDB` database.
+// Copyright 2018 The Exonum Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! An implementation of `MemoryDB` database.
+
 use std::sync::{Arc, RwLock};
 use std::clone::Clone;
 use std::collections::{BTreeMap, HashMap};
@@ -8,29 +23,39 @@ use super::db::Change;
 
 type DB = HashMap<String, BTreeMap<Vec<u8>, Vec<u8>>>;
 
-
-#[derive(Dafault, Debug)]
+/// Database implementation that stores all the data in memory.
+///
+/// It's mainly used for testing and not designed to be efficient.
+#[derive(Default, Debug)]
 pub struct MemoryDB {
     map: RwLock<DB>,
 }
 
 /// An iterator over the entries of a `MemoryDB`.
-struct MemoryDBIterator{
-    data: Vec<Vec<u8>, Vec<u8>>,
+struct MemoryDBIter {
+    data: Vec<(Vec<u8>, Vec<u8>)>,
     index: usize,
 }
 
-impl Database for MemoryDB{
-    fn snapshot(&self) -> Box<Snapshot>{
-        Box::new(MemoryDB{
+impl MemoryDB {
+    /// Creates a new, empty database.
+    pub fn new() -> MemoryDB {
+        MemoryDB {
+            map: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+impl Database for MemoryDB {
+    fn snapshot(&self) -> Box<Snapshot> {
+        Box::new(MemoryDB {
             map: RwLock::new(self.map.read().unwrap().clone()),
         })
     }
 
-    fn merge(&self, patch: Patch) ->Result<()> {
+    fn merge(&self, patch: Patch) -> Result<()> {
         let mut guard = self.map.write().unwrap();
         for (cf_name, changes) in patch {
-            // iter all changes
             if !guard.contains_key(&cf_name) {
                 guard.insert(cf_name.clone(), BTreeMap::new());
             }
@@ -53,7 +78,6 @@ impl Database for MemoryDB{
         self.merge(patch)
     }
 }
-
 
 impl Snapshot for MemoryDB {
     fn get(&self, name: &str, key: &[u8]) -> Option<Vec<u8>> {
@@ -87,24 +111,24 @@ impl Snapshot for MemoryDB {
     }
 }
 
-impl Iterator for MemoryDBIterator{
+impl Iterator for MemoryDBIter {
     fn next(&mut self) -> Option<(&[u8], &[u8])> {
         if self.index < self.data.len() {
-            self.index+=1;
+            self.index += 1;
             self.data
-                .get(self.index -1)
+                .get(self.index - 1)
                 .map(|&(ref k, ref v)| (k.as_slice(), v.as_slice()))
-        }else {
+        } else {
             None
         }
     }
 
     fn peek(&mut self) -> Option<(&[u8], &[u8])> {
-        if self.index < self.data.len(){
+        if self.index < self.data.len() {
             self.data
                 .get(self.index)
                 .map(|&(ref k, ref v)| (k.as_slice(), v.as_slice()))
-        }else {
+        } else {
             None
         }
     }
@@ -116,6 +140,27 @@ impl From<MemoryDB> for Arc<Database> {
     }
 }
 
+#[test]
+fn test_memorydb_snapshot() {
+    let db = MemoryDB::new();
+    let idx_name = "idx_name";
+    {
+        let mut fork = db.fork();
+        fork.put(idx_name, vec![1, 2, 3], vec![123]);
+        let _ = db.merge(fork.into_patch());
+    }
 
-/// TODO
-/// add test
+    let snapshot = db.snapshot();
+    assert!(snapshot.contains(idx_name, vec![1, 2, 3].as_slice()));
+
+    {
+        let mut fork = db.fork();
+        fork.put(idx_name, vec![2, 3, 4], vec![234]);
+        let _ = db.merge(fork.into_patch());
+    }
+
+    assert!(!snapshot.contains(idx_name, vec![2, 3, 4].as_slice()));
+
+    let snapshot = db.snapshot();
+    assert!(snapshot.contains(idx_name, vec![2, 3, 4].as_slice()));
+}
