@@ -12,25 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crypto::{CryptoHash, Hash};
-
-/// A common trait for the ability to compute a unique hash. Unlike `CryptoHash`, the hash value
-/// returned by the `UniqueHash::hash()` method isn't always irreversible.
-pub trait UniqueHash {
-    /// Returns a hash of the value.
-    ///
-    /// Hash must be unique, but not necessary cryptographic.
-    fn hash(&self) -> Hash;
-}
-
-impl<T: CryptoHash> UniqueHash for T {
-    fn hash(&self) -> Hash {
-        CryptoHash::hash(self)
-    }
-}
-
-impl UniqueHash for Hash {
-    fn hash(&self) -> Hash {
-        *self
-    }
-}
+mod config_updater;
+mod sandbox;
+mod sandbox_tests_helper;
+mod timestamping;
+mod consensus;
+mod old;
+mod requests;

@@ -12,25 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crypto::{CryptoHash, Hash};
+//! Abstract settings for databases.
 
-/// A common trait for the ability to compute a unique hash. Unlike `CryptoHash`, the hash value
-/// returned by the `UniqueHash::hash()` method isn't always irreversible.
-pub trait UniqueHash {
-    /// Returns a hash of the value.
+/// Options for database.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct DbOptions {
+    /// Number of open files that can be used by the DB.
     ///
-    /// Hash must be unique, but not necessary cryptographic.
-    fn hash(&self) -> Hash;
+    /// Defaults to `None`, which means opened files are always kept open.
+    pub max_open_files: Option<i32>,
+    /// Whether create database or not, if it's missing.
+    ///
+    /// Defaults to `true`.
+    pub create_if_missing: bool,
 }
 
-impl<T: CryptoHash> UniqueHash for T {
-    fn hash(&self) -> Hash {
-        CryptoHash::hash(self)
-    }
-}
-
-impl UniqueHash for Hash {
-    fn hash(&self) -> Hash {
-        *self
+impl Default for DbOptions {
+    fn default() -> Self {
+        Self {
+            max_open_files: None,
+            create_if_missing: true,
+        }
     }
 }
