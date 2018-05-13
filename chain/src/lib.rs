@@ -80,6 +80,5 @@ pub mod messages;
 #[macro_use]
 pub mod helpers;
 pub mod crypto;
-
-#[cfg(test)]
-mod sandbox;
+pub mod blockchain;
+pub mod storage;
