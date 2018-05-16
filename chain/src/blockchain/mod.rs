@@ -32,6 +32,8 @@
 //! [`Service`]: ./trait.Service.html
 //! [doc:create-service]: https://exonum.com/doc/get-started/create-service
 
+use self::block::{Block};
+
 use vec_map::VecMap;
 use byteorder::{ByteOrder, LittleEndian};
 use mount::Mount;

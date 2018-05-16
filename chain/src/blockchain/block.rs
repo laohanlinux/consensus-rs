@@ -45,3 +45,11 @@ encoding_struct!(
         state_hash: &Hash,
     }
 );
+
+/// Block with pre-commits
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BlockProof{
+    /// Block.
+    pub block: Block,
+    // TODO: add precommits
+}
