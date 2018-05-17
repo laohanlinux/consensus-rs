@@ -33,6 +33,7 @@
 //! [doc:create-service]: https://exonum.com/doc/get-started/create-service
 
 use self::block::{Block};
+use self::schema::{Schema};
 
 use vec_map::VecMap;
 use byteorder::{ByteOrder, LittleEndian};

@@ -631,9 +631,8 @@ mod tests {
     use super::*;
     use crypto;
     use encoding;
-    use blockchain::{Blockchain, Schema, Service};
+    use blockchain::{Blockchain, Schema};
     use storage::{Database, Entry, MemoryDB, Snapshot};
-    use node::ApiSender;
     use helpers::{Height, ValidatorId};
 
     const TX_RESULT_SERVICE_ID: u16 = 255;
@@ -741,53 +740,6 @@ mod tests {
     }
 
     #[test]
-    fn error_discards_transaction_changes() {
-        let statuses = [
-            Err(ExecutionError::new(0)),
-            Err(ExecutionError::with_description(0, "Strange error")),
-            Err(ExecutionError::new(255)),
-            Err(ExecutionError::with_description(
-                255,
-                "Error description...",
-            )),
-            Ok(()),
-        ];
-
-        let (_, sec_key) = crypto::gen_keypair();
-        let mut blockchain = create_blockchain();
-        let db = Box::new(MemoryDB::new());
-
-        for (index, status) in statuses.iter().enumerate() {
-            let index = index as u64;
-
-            *EXECUTION_STATUS.lock().unwrap() = status.clone();
-
-            let transaction = TxResult::new(index, &sec_key);
-            let hash = transaction.hash();
-            {
-                let mut fork = blockchain.fork();
-                {
-                    let mut schema = Schema::new(&mut fork);
-                    schema.add_transaction_into_pool(transaction.raw().clone());
-                }
-                blockchain.merge(fork.into_patch()).unwrap();
-            }
-
-            let (_, patch) = blockchain.create_patch(ValidatorId::zero(), Height(index), &[hash]);
-
-            db.merge(patch).unwrap();
-
-            let mut fork = db.fork();
-            let entry = create_entry(&mut fork);
-            if status.is_err() {
-                assert_eq!(None, entry.get());
-            } else {
-                assert_eq!(Some(index), entry.get());
-            }
-        }
-    }
-
-    #[test]
     fn str_panic() {
         let static_str = "Static string (&str)";
         let panic = make_panic(static_str);
@@ -824,31 +776,7 @@ mod tests {
         let api_channel = mpsc::channel(1);
         Blockchain::new(
             MemoryDB::new(),
-            vec![Box::new(TxResultService) as Box<Service>],
-            service_keypair.0,
-            service_keypair.1,
-            ApiSender::new(api_channel.0),
         )
-    }
-
-    struct TxResultService;
-
-    impl Service for TxResultService {
-        fn service_id(&self) -> u16 {
-            TX_RESULT_SERVICE_ID
-        }
-
-        fn service_name(&self) -> &'static str {
-            "test service"
-        }
-
-        fn state_hash(&self, _: &Snapshot) -> Vec<Hash> {
-            vec![]
-        }
-
-        fn tx_from_raw(&self, raw: RawTransaction) -> Result<Box<Transaction>, encoding::Error> {
-            Ok(Box::new(TxResult::from_raw(raw)?))
-        }
     }
 
     transactions! {

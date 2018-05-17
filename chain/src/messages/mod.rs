@@ -28,9 +28,6 @@ use helpers::{Height, Round, ValidatorId};
 #[macro_use]
 mod raw;
 
-#[cfg(test)]
-mod tests;
-
 // TODO: implement common methods for enum types (hash, raw, from_raw, verify)
 // TODO: use macro for implementing enums (ECR-166)
 
