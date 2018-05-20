@@ -56,6 +56,7 @@ mod block;
 mod transaction;
 #[macro_use]
 mod schema;
+mod dpos;
 
 /// Exonum blockchain instance with the concrete services set and data storage.
 /// Only blockchains with the identical set of services and genesis block can be combined

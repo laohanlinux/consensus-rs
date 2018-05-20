@@ -1,3 +1,3 @@
-struct Block {
-
+pub struct Block {
+    pub timestamp: i64,
 }
