@@ -52,8 +52,8 @@ use encoding::Error as MessageError;
 
 
 mod block;
-#[macro_use]
-mod transaction;
+//#[macro_use]
+//mod transaction;
 #[macro_use]
 mod schema;
 mod dpos;

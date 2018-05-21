@@ -63,6 +63,7 @@ extern crate tokio_timer;
 extern crate toml;
 extern crate uuid;
 extern crate vec_map;
+extern crate quick_protobuf;
 extern crate prost;
 #[macro_use]
 extern crate prost_derive;

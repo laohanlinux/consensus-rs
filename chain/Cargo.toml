@@ -39,6 +39,7 @@ chrono = { version = "0.4.0", features = ["serde"] }
 bodyparser = "0.8.0"
 uuid = { version = "0.6.0", features = ["serde"] }
 
+quick-protobuf = "0.6.0"
 prost = "0.3.2"
 prost-derive = "0.3.2"
 
