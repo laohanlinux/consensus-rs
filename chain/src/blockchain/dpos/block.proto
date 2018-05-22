@@ -1,8 +1,0 @@
-syntax = "proto3";
-
-package block.dpos;
-
-message Block {
-    uint64 height = 1;
-    uint64 timestamp = 2;
-}

@@ -34,19 +34,22 @@
 
 use self::block::{Block};
 use self::schema::{Schema};
+use self::dposblock::{Block as DposBlock};
 
 use vec_map::VecMap;
 use byteorder::{ByteOrder, LittleEndian};
 use mount::Mount;
 use failure;
+use quick_protobuf::{Writer, Reader, MessageRead, MessageWrite};
 
 use std::{fmt, iter, mem, panic};
 use std::sync::Arc;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error as StdError;
+use std::io::Cursor;
 
 use messages::{RawMessage};
-use storage::{Database, Error, Fork, Patch, Snapshot};
+use storage::{Database, Error, Fork, Patch, Snapshot, StorageKey, StorageValue};
 use helpers::{Height, Round, ValidatorId};
 use encoding::Error as MessageError;
 
@@ -56,7 +59,7 @@ mod block;
 //mod transaction;
 #[macro_use]
 mod schema;
-mod dpos;
+mod dposblock;
 
 /// Exonum blockchain instance with the concrete services set and data storage.
 /// Only blockchains with the identical set of services and genesis block can be combined
@@ -80,7 +83,6 @@ impl Blockchain {
     /// via `merge` method.
     pub fn fork(&self) -> Fork {self.db.fork()}
 
-
     /// Commits changes from the patch to the blockchain storage.
     /// See [`Fork`](../storage/struct.Fork.html) for details.
     pub fn merge(&mut self, patch: Patch) -> Result<(), Error> {self.db.merge(patch)}
@@ -100,3 +102,55 @@ impl Clone for Blockchain {
         }
     }
 }
+
+// TODO: use macro reimplements
+impl StorageKey for DposBlock {
+
+    fn size(&self) -> usize {
+        self.get_size()
+    }
+
+    fn write(&self, buffer: &mut [u8]) {
+        let mut writer = Writer::new(Cursor::new(buffer));
+        self.write_message(&mut writer).unwrap();
+    }
+
+    fn read(buffer: &[u8]) -> Self::Owned{
+        let mut reader = Reader::from_bytes(buffer.to_vec());
+        reader.read(DposBlock::from_reader).expect("Cannot read Block message")
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use bytes::BufMut;
+    use std::io::Cursor;
+    use prost::Message;
+    use storage::{StorageKey, StorageValue};
+    use quick_protobuf::{Writer, Reader, MessageRead, MessageWrite};
+
+    use std::io::{self, Write};
+    use std::iter;
+
+    use super::DposBlock as Block;
+
+    #[test]
+    fn test_storage_key_for_block(){
+            let mut block = Block::default();
+            block.height = 1_000;
+            block.timestamp = 2_000;
+
+            let block_size = block.get_size();
+            let mut buffer = Vec::with_capacity(block_size);
+            buffer.extend(iter::repeat(0).take(block_size));
+            block.write(&mut buffer);
+
+            writeln!(io::stdout(), "{}", buffer[0]).unwrap();
+
+            let new_block: Block = Block::read(&buffer);
+            assert_eq!(new_block.height, block.height);
+    }
+
+}
+

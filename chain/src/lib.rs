@@ -69,9 +69,9 @@ extern crate prost;
 extern crate prost_derive;
 
 /// Include the `dosp/block` module, which is generated from block.proto
-pub mod dposblock {
-    include!(concat!(env!("OUT_DIR"), "/block.dpos.rs"));
-}
+//pub mod dposblock {
+//    include!(concat!(env!("OUT_DIR"), "/block.dpos.rs"));
+//}
 
 // Test dependencies.
 #[cfg(test)]
