@@ -9,6 +9,7 @@ mod slot;
 mod block;
 mod transaction;
 mod delegates;
+mod util;
 
 pub mod prelude {
 

@@ -31,10 +31,9 @@
 //! [`Transaction`]: ./trait.Transaction.html
 //! [`Service`]: ./trait.Service.html
 //! [doc:create-service]: https://exonum.com/doc/get-started/create-service
-
 use self::block::{Block};
 use self::schema::{Schema};
-use self::dposblock::{Block as DposBlock};
+use self::dpos::block::{Block as DposBlock};
 
 use vec_map::VecMap;
 use byteorder::{ByteOrder, LittleEndian};
@@ -47,8 +46,10 @@ use std::sync::Arc;
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error as StdError;
 use std::io::Cursor;
+use std::borrow::Cow;
 
 use messages::{RawMessage};
+use crypto::{self, CryptoHash, Hash};
 use storage::{Database, Error, Fork, Patch, Snapshot, StorageKey, StorageValue};
 use helpers::{Height, Round, ValidatorId};
 use encoding::Error as MessageError;
@@ -59,7 +60,8 @@ mod block;
 //mod transaction;
 #[macro_use]
 mod schema;
-mod dposblock;
+
+pub mod dpos;
 
 /// Exonum blockchain instance with the concrete services set and data storage.
 /// Only blockchains with the identical set of services and genesis block can be combined
@@ -117,18 +119,51 @@ impl StorageKey for DposBlock {
 
     fn read(buffer: &[u8]) -> Self::Owned{
         let mut reader = Reader::from_bytes(buffer.to_vec());
-        reader.read(DposBlock::from_reader).expect("Cannot read Block message")
+        reader.read(DposBlock::from_reader).unwrap()
+    }
+}
+
+impl StorageValue for DposBlock {
+    fn into_bytes(self) -> Vec<u8> {
+        let capacity = self.get_size();
+        let mut buffer = Vec::with_capacity(capacity);
+        buffer.extend(iter::repeat(0).take(capacity));
+        {
+            let mut writer = Writer::new(&mut buffer);
+            self.write_message(&mut writer).unwrap();
+        }
+        buffer
+    }
+
+    fn from_bytes(value: Cow<[u8]>) -> Self {
+        let mut reader = Reader::from_bytes(value.to_vec());
+        reader.read(DposBlock::from_reader).unwrap()
+    }
+}
+
+impl CryptoHash for DposBlock{
+    fn hash(&self) -> Hash {
+        let block_size = self.get_size();
+        let mut buffer = Vec::with_capacity(block_size);
+        buffer.extend(iter::repeat(0).take(block_size));
+        self.write(&mut buffer);
+        crypto::hash(&buffer)
     }
 }
 
 
 #[cfg(test)]
 mod tests {
+
     use bytes::BufMut;
     use std::io::Cursor;
     use prost::Message;
     use storage::{StorageKey, StorageValue};
     use quick_protobuf::{Writer, Reader, MessageRead, MessageWrite};
+
+    use std::collections::HashMap;
+    use serde::{Deserialize, Serialize};
+    use rmp_serde::{Deserializer, Serializer};
 
     use std::io::{self, Write};
     use std::iter;
@@ -136,12 +171,31 @@ mod tests {
     use super::DposBlock as Block;
 
     #[test]
+    fn test_storage_key_for_message_pack(){
+        #[derive(Debug, PartialEq, Deserialize, Serialize)]
+        struct Human {
+            age: u32,
+            name: String,
+        }
+
+        let mut buf = vec![];
+        assert_eq!(buf.len(), 0);
+        let val = Human {
+            age: 42,
+            name: "John".into(),
+        };
+
+        val.serialize(&mut Serializer::new(&mut buf)).unwrap();
+        assert!(buf.len() > 1);
+    }
+
+    #[test]
     fn test_storage_key_for_block(){
             let mut block = Block::default();
             block.height = 1_000;
             block.timestamp = 2_000;
 
-            let block_size = block.get_size();
+            let block_size = block.get_size() -2;
             let mut buffer = Vec::with_capacity(block_size);
             buffer.extend(iter::repeat(0).take(block_size));
             block.write(&mut buffer);

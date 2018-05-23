@@ -67,6 +67,9 @@ extern crate quick_protobuf;
 extern crate prost;
 #[macro_use]
 extern crate prost_derive;
+extern crate rmp_serialize;
+extern crate rustc_serialize;
+extern crate rmp_serde;
 
 /// Include the `dosp/block` module, which is generated from block.proto
 //pub mod dposblock {

@@ -8,9 +8,9 @@ fn main (){
 //        &["src/blockchain/dpos/block.proto"],
 //        &["src/"]).unwrap();
 
-    if Path::new("src/blockchain/dposblock.rs").is_file() {
-        return ;
-    }
+//    if Path::new("src/blockchain/dposblock.rs").is_file() {
+//        return ;
+//    }
 
     let output = Command::new("pb-rs")
         .arg("src/blockchain/block-dpos.proto")

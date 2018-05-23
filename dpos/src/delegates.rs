@@ -1,5 +1,7 @@
 use slot;
 use time::Timespec;
+use chain::blockchain::dpos::block::Block;
+use util;
 
 // height --> slot_list
 // 根据当前的slot，找到高度为height的相应见证人id以及相对应的slot
@@ -21,10 +23,17 @@ fn get_block_slot_date<'a>(slot: i64, height: i64) -> Option<(&'a str, i64)>{
     None
 }
 
-pub fn validate_block_slot(block: super::Block) {
+pub fn validate_block_slot(block: Block) {
     // get the height delegates list
-    // let delegates = get_active_delegates()
+    let delegates = slot::get_active_delegates();
     let slot_time = block.timestamp;
+
+    let current_slot = slot::get_slot_number(block.timestamp);
+    let idx = current_slot as usize % delegates.len();
+    let delegate_id = delegates[idx];
+//    if util::equal_delegate(delegate_id, &block.generator) {
+//
+//    }
 }
 
 #[cfg(test)]
