@@ -31,9 +31,9 @@
 //! [`Transaction`]: ./trait.Transaction.html
 //! [`Service`]: ./trait.Service.html
 //! [doc:create-service]: https://exonum.com/doc/get-started/create-service
-use self::block::{Block};
-use self::schema::{Schema};
-use self::dpos::block::{Block as DposBlock};
+pub use self::block::{Block};
+pub use self::schema::{Schema};
+pub use self::dpos::block::{Block as DposBlock};
 
 use vec_map::VecMap;
 use byteorder::{ByteOrder, LittleEndian};
@@ -56,8 +56,8 @@ use encoding::Error as MessageError;
 
 
 mod block;
-//#[macro_use]
-//mod transaction;
+#[macro_use]
+mod transaction;
 #[macro_use]
 mod schema;
 

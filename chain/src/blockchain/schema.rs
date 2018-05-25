@@ -67,6 +67,7 @@ encoding_struct!(
     }
 );
 
+
 /// Information schema for `exonum-core`.
 #[derive(Debug)]
 pub struct Schema<T>{

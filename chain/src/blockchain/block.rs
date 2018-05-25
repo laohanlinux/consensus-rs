@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crypto::Hash;
+use crypto::{Hash, PublicKey};
 use helpers::{Height, ValidatorId};
 
 /// Current core information schema version.
 pub const SCHEMA_MAJOR_VERSION: u16 = 0;
-
 
 encoding_struct!(
     /// Exonum block header data structure.
@@ -33,8 +32,12 @@ encoding_struct!(
         schema_version: u16,
         /// Identifier of the block proposer.
         proposer_id: ValidatorId,
+        /// for dpos
+        generator_id: Vec<u8>,
         /// Height of the block.
         height: Height,
+        /// Timestamp of the block.
+        timestamp: i64,
         /// Number of transactions in block.
         tx_count: u32,
         /// Hash link to the previous block in blockchain.

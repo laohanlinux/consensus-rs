@@ -10,7 +10,7 @@ pub const INTERVAL: i64 = 3;
 pub const DELEGATES: i64 = 11;
 pub const ACTIVE_DELEGATES:[&str; DELEGATES as usize] = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
 
-pub fn get_active_delegates<'a>(height: i64) -> Vec<&'a str> {
+pub fn get_active_delegates<'a>(height: u64) -> Vec<&'a str> {
     ACTIVE_DELEGATES.to_vec()
 }
 
