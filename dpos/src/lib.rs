@@ -10,6 +10,8 @@ mod block;
 mod transaction;
 mod delegates;
 mod util;
+mod accounts;
+mod blockchain;
 
 pub mod prelude {
 

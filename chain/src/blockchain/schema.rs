@@ -17,7 +17,7 @@ use messages::{RawMessage};
 use storage::{Entry, Fork, KeySetIndex, ListIndex, MapIndex, MapProof, ProofListIndex,
               ProofMapIndex, Snapshot};
 use helpers::{Height, Round};
-use super::{Block};
+use super::{Block, Blockchain, TransactionResult};
 
 /// Defines `&str` constants with given name and value.
 macro_rules! define_names {
@@ -85,6 +85,11 @@ where T: AsRef<Snapshot>,
         MapIndex::new(TRANSACTIONS, &self.view)
     }
 
+    /// Returns table that represents a map from transaction hash into execution result.
+    pub fn transaction_results(&self) -> ProofMapIndex<&T, Hash, TransactionResult> {
+        ProofMapIndex::new(TRANSACTION_RESULTS, &self.view)
+    }
+
     /// Returns table that represents a set of uncommitted transactions hashes.
     pub fn transactions_pool(&self) -> KeySetIndex<&T, Hash> {
         KeySetIndex::new(TRANSACTIONS_POOL, &self.view)
@@ -99,7 +104,6 @@ where T: AsRef<Snapshot>,
         let count: usize = pool.iter().count();
         count
     }
-
 
     /// Returns table that keeps the block height and tx position inside block for every
     /// transaction hash.
@@ -150,5 +154,27 @@ where T: AsRef<Snapshot>,
         let len: u64 = self.block_hashes_by_height().len();
         assert!(len > 0, "An attempt to get the actual `height` during creating the genesis block.");
         Height(len - 1)
+    }
+
+    /// Returns the `state_hash` table for core tables.
+    pub fn core_state_hash(&self) -> Vec<Hash> {
+        // TODO: add config merkle root
+        vec![
+            self.transaction_results().merkle_root(),
+        ]
+    }
+
+    /// Mutable reference to the [`blocks][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.blocks
+    pub(crate) fn blocks_mut(&mut self) -> MapIndex<&mut Fork, Hash, Block> {
+        MapIndex::new(BLOCKS, self.view)
+    }
+
+    /// Mutable reference to the [`block_hashes_by_height_mut`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.block_hashes_by_height_mut
+    pub(crate) fn block_hashes_by_height_mut(&mut self) -> ListIndex<&mut Fork, Hash> {
+        ListIndex::new(BLOCK_HASHES_BY_HEIGHT, self.view)
     }
 }

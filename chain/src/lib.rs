@@ -71,11 +71,6 @@ extern crate rmp_serialize;
 extern crate rustc_serialize;
 extern crate rmp_serde;
 
-/// Include the `dosp/block` module, which is generated from block.proto
-//pub mod dposblock {
-//    include!(concat!(env!("OUT_DIR"), "/block.dpos.rs"));
-//}
-
 // Test dependencies.
 #[cfg(test)]
 #[macro_use]
