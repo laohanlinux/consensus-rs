@@ -1,3 +1,47 @@
+// Copyright 2018 The Exonum Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! The module containing building blocks for creating blockchains powered by
+//! the Exonum framework.
+//!
+//! Services are the main extension point for the Exonum framework. To create
+//! your service on top of Exonum blockchain you need to do the following:
+//!
+//! - Define your own information schema.
+//! - Create one or more transaction types using the [`transactions!`] macro and
+//!   implement the [`Transaction`] trait for them.
+//! - Create a data structure implementing the [`Service`] trait.
+//! - Write API handlers for the service, if required.
+//!
+//! You may consult [the service creation tutorial][doc:create-service] for a more detailed
+//! manual on how to create services.
+//!
+//! [`transactions!`]: ../macro.transactions.html
+//! [`Transaction`]: ./trait.Transaction.html
+//! [`Service`]: ./trait.Service.html
+//! [doc:create-service]: https://exonum.com/doc/get-started/create-service
+pub use self::block::{Block, SCHEMA_MAJOR_VERSION, BlockProof};
+pub use self::schema::Schema;
+pub use self::transaction::{Transaction, TransactionResult};
+pub use self::genesis::GenesisConfig;
+pub use self::config::ConsensusConfig;
+
+use vec_map::VecMap;
+use byteorder::{ByteOrder, LittleEndian};
+use mount::Mount;
+use failure;
+
 use std::{fmt, iter, mem, panic};
 use std::sync::Arc;
 use std::collections::{BTreeMap, HashMap};
@@ -5,14 +49,40 @@ use std::error::Error as StdError;
 use std::io::Cursor;
 use std::borrow::Cow;
 
-use chain::storage::{Database, Snapshot, Patch, Fork};
-use chain::blockchain::Schema;
+use messages::RawMessage;
+use crypto::{self, CryptoHash, Hash};
+use storage::{Database, Error, Fork, Patch, Snapshot, StorageKey, StorageValue};
+use helpers::{Height, Round, ValidatorId};
+use encoding::Error as MessageError;
+
+mod block;
+#[macro_use]
+mod transaction;
+#[macro_use]
+mod schema;
+mod genesis;
+mod config;
+
 
 /// Exonum blockchain instance with the concrete services set and data storage.
 /// Only blockchains with the identical set of services and genesis block can be combined
 /// into the single network.
 pub struct Blockchain {
     db: Arc<Database>,
+}
+
+impl fmt::Debug for Blockchain {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Blockchain(..")
+    }
+}
+
+impl Clone for Blockchain {
+    fn clone(&self) -> Blockchain {
+        Blockchain {
+            db: Arc::clone(&self.db),
+        }
+    }
 }
 
 impl Blockchain {
@@ -33,34 +103,6 @@ impl Blockchain {
     /// Commits changes from the patch to the blockchain storage.
     /// See [`Fork`](../storage/struct.Fork.html) for details.
     pub fn merge(&mut self, patch: Patch) -> Result<(), Error> { self.db.merge(patch) }
-}
-
-impl fmt::Debug for Blockchain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Blockchain(..")
-    }
-}
-
-impl Clone for Blockchain {
-    fn clone(&self) -> Blockchain {
-        Blockchain {
-            db: Arc::clone(&self.db),
-        }
-    }
-}
-
-impl Blockchain {
-    /// Creates snapshot of the current storage state that can be later committed into storage
-    /// via `merge` method.
-    pub fn fork(&self) -> Fork {
-        self.db.fork()
-    }
-
-    /// Commits changes from the patch to the blockchain storage.
-    /// See [`Fork`](../storage/struct.Fork.html) for details.
-    pub fn merge(&mut self, patch: Patch) -> Result<(), Error> {
-        self.db.merge(patch)
-    }
 
     /// Returns the hash of latest committed block.
     ///
@@ -126,8 +168,17 @@ impl Blockchain {
                 let schema = Schema::new(&fork);
                 let state_hashes = {
                     let vec_core_state = schema.core_state_hash();
-                    let mut state_hashes = Vec::new();
+                    let mut state_hashes:Vec<(Hash, Hash)> = Vec::new();
+                    state_hashes
                 };
+                let state_hash = {
+                    let mut sum_table = schema.state_hash_aggregator_mut();
+                    for (key, hash) in state_hashes {
+                        sum_table.put(&key, hash)
+                    }
+                    sum_table.merkle_root()
+                };
+
                 let tx_hash = schema.block_transactions(height).merkle_root();
 
                 (tx_hash, state_hash)
@@ -136,7 +187,7 @@ impl Blockchain {
             // Create block.
             let block = Block::new(
                 SCHEMA_MAJOR_VERSION,
-                0, //proposer_id,
+                ValidatorId(0), //proposer_id,
                 generator_id,
                 height,
                 timestamp,
@@ -152,7 +203,7 @@ impl Blockchain {
             let block_hash = block.hash();
             // update height.
             let mut schema = Schema::new(&mut fork);
-            schema.block_hash_by_height_mut().push(block_hash);
+            schema.block_hashes_by_height_mut().push(block_hash);
             // Save block.
             schema.blocks_mut().put(&block_hash, block);
 
@@ -173,52 +224,6 @@ impl Blockchain {
         Ok(())
     }
 }
-
-// TODO: use macro reimplements
-impl StorageKey for DposBlock {
-    fn size(&self) -> usize {
-        self.get_size()
-    }
-
-    fn write(&self, buffer: &mut [u8]) {
-        let mut writer = Writer::new(Cursor::new(buffer));
-        self.write_message(&mut writer).unwrap();
-    }
-
-    fn read(buffer: &[u8]) -> Self::Owned {
-        let mut reader = Reader::from_bytes(buffer.to_vec());
-        reader.read(DposBlock::from_reader).unwrap()
-    }
-}
-
-impl StorageValue for DposBlock {
-    fn into_bytes(self) -> Vec<u8> {
-        let capacity = self.get_size();
-        let mut buffer = Vec::with_capacity(capacity);
-        buffer.extend(iter::repeat(0).take(capacity));
-        {
-            let mut writer = Writer::new(&mut buffer);
-            self.write_message(&mut writer).unwrap();
-        }
-        buffer
-    }
-
-    fn from_bytes(value: Cow<[u8]>) -> Self {
-        let mut reader = Reader::from_bytes(value.to_vec());
-        reader.read(DposBlock::from_reader).unwrap()
-    }
-}
-
-impl CryptoHash for DposBlock {
-    fn hash(&self) -> Hash {
-        let block_size = self.get_size();
-        let mut buffer = Vec::with_capacity(block_size);
-        buffer.extend(iter::repeat(0).take(block_size));
-        self.write(&mut buffer);
-        crypto::hash(&buffer)
-    }
-}
-
 
 #[cfg(test)]
 mod tests {

@@ -78,7 +78,7 @@ impl <T> Schema<T>
 where T: AsRef<Snapshot>,
 {
     /// Constructs information schema for the given `snapshot`.
-    pub fn new(snapshot: T) -> Schema<T> {Schema{view:snapshot}}
+    pub fn new(snapshot: T) -> Schema<T> { Schema { view: snapshot } }
 
     /// Returns table represents a map from transaction hash into raw transaction message.
     pub fn transactions(&self) -> MapIndex<&T, Hash, RawMessage> {
@@ -137,7 +137,7 @@ where T: AsRef<Snapshot>,
     /// #Panics
     ///
     /// Panics if the "genesis block" was not created
-    pub fn last_block(&self) -> Block{
+    pub fn last_block(&self) -> Block {
         let hash: Hash = self.block_hashes_by_height()
             .last()
             .expect("An attempt to get the `last_block` during creating the genesis block.");
@@ -163,18 +163,27 @@ where T: AsRef<Snapshot>,
             self.transaction_results().merkle_root(),
         ]
     }
+}
 
+impl <'a> Schema <&'a mut Fork> {
     /// Mutable reference to the [`blocks][1] index.
     ///
     /// [1]: struct.Schema.html#method.blocks
-    pub(crate) fn blocks_mut(&mut self) -> MapIndex<&mut Fork, Hash, Block> {
+    pub fn blocks_mut(&mut self) -> MapIndex<&mut Fork, Hash, Block> {
         MapIndex::new(BLOCKS, self.view)
     }
 
     /// Mutable reference to the [`block_hashes_by_height_mut`][1] index.
     ///
     /// [1]: struct.Schema.html#method.block_hashes_by_height_mut
-    pub(crate) fn block_hashes_by_height_mut(&mut self) -> ListIndex<&mut Fork, Hash> {
+    pub fn block_hashes_by_height_mut(&mut self) -> ListIndex<&mut Fork, Hash> {
         ListIndex::new(BLOCK_HASHES_BY_HEIGHT, self.view)
+    }
+
+    /// Mutable reference to the [`state_hash_aggregator`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.state_hash_aggregator
+    pub fn state_hash_aggregator_mut(&mut self) -> ProofMapIndex<&mut Fork, Hash, Hash> {
+        ProofMapIndex::new(STATE_HASH_AGGREGATOR, self.view)
     }
 }

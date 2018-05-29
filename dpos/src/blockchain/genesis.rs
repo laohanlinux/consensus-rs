@@ -1,4 +1,4 @@
-use super::config::ConsensusConfig;
+use super::ConsensusConfig;
 
 /// The initial `exonum-core` configuration which is committed into the genesis block.
 #[derive(Clone, Serialize, Deserialize, Debug)]

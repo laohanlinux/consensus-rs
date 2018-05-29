@@ -79,13 +79,3 @@ extern crate lazy_static;
 extern crate tempdir;
 #[cfg(all(test, feature = "long_benchmarks"))]
 extern crate test;
-
-#[macro_use]
-pub mod encoding;
-#[macro_use]
-pub mod messages;
-#[macro_use]
-pub mod helpers;
-pub mod crypto;
-pub mod blockchain;
-pub mod storage;

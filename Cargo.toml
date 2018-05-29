@@ -6,4 +6,3 @@ authors = ["Rg <daimaldd@gmail.com>"]
 [dependencies]
 
 dpos = {path = "./dpos"}
-chain = {path = "./chain"}

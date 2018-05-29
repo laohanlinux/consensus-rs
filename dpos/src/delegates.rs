@@ -1,7 +1,7 @@
 use slot;
 use time::Timespec;
-use chain::blockchain::Block;
-use chain::helpers::Height;
+use blockchain::Block;
+use helpers::Height;
 use util;
 
 
