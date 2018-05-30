@@ -165,25 +165,119 @@ where T: AsRef<Snapshot>,
     }
 }
 
-impl <'a> Schema <&'a mut Fork> {
+
+impl<'a> Schema<&'a mut Fork> {
+    /// Mutable reference to the [`transactions`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.transactions
+    pub(crate) fn transactions_mut(&mut self) -> MapIndex<&mut Fork, Hash, RawMessage> {
+        MapIndex::new(TRANSACTIONS, self.view)
+    }
+
+    /// Mutable reference to the [`transaction_results`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.transaction_results
+    pub(crate) fn transaction_results_mut(
+        &mut self,
+    ) -> ProofMapIndex<&mut Fork, Hash, TransactionResult> {
+        ProofMapIndex::new(TRANSACTION_RESULTS, self.view)
+    }
+
+    /// Mutable reference to the [`transactions_pool`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.transactions_pool
+    fn transactions_pool_mut(&mut self) -> KeySetIndex<&mut Fork, Hash> {
+        KeySetIndex::new(TRANSACTIONS_POOL, self.view)
+    }
+
+    /// Mutable reference to the [`transactions_locations`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.transactions_locations
+    pub(crate) fn transactions_locations_mut(&mut self) -> MapIndex<&mut Fork, Hash, TxLocation> {
+        MapIndex::new(TRANSACTIONS_LOCATIONS, self.view)
+    }
+
     /// Mutable reference to the [`blocks][1] index.
     ///
     /// [1]: struct.Schema.html#method.blocks
-    pub fn blocks_mut(&mut self) -> MapIndex<&mut Fork, Hash, Block> {
+    pub(crate) fn blocks_mut(&mut self) -> MapIndex<&mut Fork, Hash, Block> {
         MapIndex::new(BLOCKS, self.view)
     }
 
     /// Mutable reference to the [`block_hashes_by_height_mut`][1] index.
     ///
     /// [1]: struct.Schema.html#method.block_hashes_by_height_mut
-    pub fn block_hashes_by_height_mut(&mut self) -> ListIndex<&mut Fork, Hash> {
+    pub(crate) fn block_hashes_by_height_mut(&mut self) -> ListIndex<&mut Fork, Hash> {
         ListIndex::new(BLOCK_HASHES_BY_HEIGHT, self.view)
+    }
+
+    /// Mutable reference to the [`block_transactions`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.block_transactions
+    pub(crate) fn block_transactions_mut(
+        &mut self,
+        height: Height,
+    ) -> ProofListIndex<&mut Fork, Hash> {
+        let height: u64 = height.into();
+        ProofListIndex::new_in_family(BLOCK_TRANSACTIONS, &height, self.view)
     }
 
     /// Mutable reference to the [`state_hash_aggregator`][1] index.
     ///
     /// [1]: struct.Schema.html#method.state_hash_aggregator
-    pub fn state_hash_aggregator_mut(&mut self) -> ProofMapIndex<&mut Fork, Hash, Hash> {
+    pub(crate) fn state_hash_aggregator_mut(&mut self) -> ProofMapIndex<&mut Fork, Hash, Hash> {
         ProofMapIndex::new(STATE_HASH_AGGREGATOR, self.view)
     }
+
+    /// Mutable reference to the [`consensus_messages_cache`][1] index.
+    ///
+    /// [1]: struct.Schema.html#method.consensus_messages
+    pub(crate) fn consensus_messages_cache_mut(&mut self) -> ListIndex<&mut Fork, RawMessage> {
+        ListIndex::new(CONSENSUS_MESSAGES_CACHE, self.view)
+    }
+
+    /// Saves the given consensus round value into storage.
+    pub(crate) fn set_consensus_round(&mut self, round: Round) {
+        let mut entry: Entry<&mut Fork, _> = Entry::new(CONSENSUS_ROUND, self.view);
+        entry.set(round);
+    }
+
+
+    /// Adds transaction into persistent pool.
+    #[doc(hidden)]
+    pub fn add_transaction_into_pool(&mut self, tx: RawMessage) {
+        self.transactions_pool_mut().insert(tx.hash());
+        self.transactions_mut().put(&tx.hash(), tx);
+    }
+
+    /// Changes transaction status from `in_pool`, to `committed`.
+    pub(crate) fn commit_transaction(&mut self, hash: &Hash) {
+        self.transactions_pool_mut().remove(hash)
+    }
+
+    /// Remove transaction from persistent pool.
+    #[doc(hidden)]
+    pub fn reject_transaction(&mut self, hash: &Hash) -> Result<(), ()> {
+        let contains = self.transactions_pool_mut().contains(hash);
+        self.transactions_pool_mut().remove(hash);
+        self.transactions_mut().remove(hash);
+        if contains {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
 }
+
+//
+//#[cfg(test)]
+//mod tests {
+//    use rand::{thread_rng, Rng};
+//    use super::*;
+//    use super::super::{Database, MemoryDB};
+//
+//    #[test]
+//    fn test_schema_fork(){
+//
+//    }
+//}

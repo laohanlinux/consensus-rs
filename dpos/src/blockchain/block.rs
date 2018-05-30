@@ -30,8 +30,6 @@ encoding_struct!(
     struct Block {
         /// Information schema version.
         schema_version: u16,
-        /// Identifier of the block proposer.
-        proposer_id: ValidatorId,
         /// for dpos
         generator_id: Vec<u8>,
         /// Height of the block.

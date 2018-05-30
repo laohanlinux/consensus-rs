@@ -1,6 +1,7 @@
 use time::{self, Timespec, Duration};
 use chrono::*;
 
+use helpers::Height;
 
 ///
 ///     [1, 2, 3, 4], [5, 6, 7, 8], [9, 10]
@@ -21,7 +22,7 @@ pub const ACTIVE_DELEGATES:[&str; DELEGATES as usize] = [
     "j",
     "k"];
 
-pub fn get_active_delegates<'a>(height: u64) -> Vec<&'a str> {
+pub fn get_active_delegates<'a>(height: Height) -> Vec<&'a str> {
     ACTIVE_DELEGATES.to_vec()
 }
 

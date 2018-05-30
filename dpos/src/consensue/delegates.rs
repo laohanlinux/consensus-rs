@@ -1,9 +1,8 @@
-use slot;
 use time::Timespec;
 use blockchain::Block;
 use helpers::Height;
-use util;
 
+use super::{util, slot};
 
 // TODO: add_delegate
 fn add_delegate() {}
@@ -33,7 +32,7 @@ pub fn generate_delegate_list<'a>(height: Height) -> Vec<&'a str>{
 // height --> slot_list
 // 根据当前的slot，找到高度为height的相应见证人id以及相对应的slot
 //
-fn get_block_slot_data<'a>(slot: i64, height: u64) -> Option<(&'a str, i64)> {
+fn get_block_slot_data<'a>(slot: i64, height: Height) -> Option<(&'a str, i64)> {
     let current_slot = slot;
     let last_slot = slot::get_last_slot(current_slot);
     let delegates = slot::get_active_delegates(height);
@@ -68,7 +67,7 @@ mod tests {
     fn test_get_block_slot_data() {
         for height in 1..12 {
             let slot = height - 1;
-            let (delegate_id, slot_time) = get_block_slot_date(slot, height).unwrap();
+            let (delegate_id, slot_time) = get_block_slot_data(slot, height as u64).unwrap();
             let slot_number = super::slot::get_slot_number(slot_time);
             writeln!(io::stdout(), "deletegate_id: {}, slot_number: {}, slot_time: {}", delegate_id, slot_number, slot_time);
         }

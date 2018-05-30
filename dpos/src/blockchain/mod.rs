@@ -39,8 +39,8 @@ pub use self::config::ConsensusConfig;
 
 use vec_map::VecMap;
 use byteorder::{ByteOrder, LittleEndian};
-use mount::Mount;
 use failure;
+use time::{self, Timespec, Duration};
 
 use std::{fmt, iter, mem, panic};
 use std::sync::Arc;
@@ -127,7 +127,7 @@ impl Blockchain {
 
 
     /// Creates and commits the genesis block for the given genesis configuration.
-    fn create_genesis_block(&mut self, cfg: ConsensusConfig) -> Result<(), Error> {
+    fn create_genesis_block(&mut self, cfg: GenesisConfig) -> Result<(), Error> {
         let patch = {
             let mut fork = self.fork();
             {
@@ -138,7 +138,8 @@ impl Blockchain {
             }
             self.merge(fork.into_patch())?;
 
-            self.create_patch(vec![],Height::zero(), 0, &[]).1
+         
+            self.create_patch(cfg.genesis_generator_id,Height::zero(), cfg.genesis_timestamp, &[]).1
         };
 
         self.merge(patch)?;
@@ -165,12 +166,14 @@ impl Blockchain {
 
             // Get tx & state hash.
             let (tx_hash, state_hash) = {
-                let schema = Schema::new(&fork);
+                let mut schema = Schema::new(&mut fork);
+
                 let state_hashes = {
                     let vec_core_state = schema.core_state_hash();
                     let mut state_hashes:Vec<(Hash, Hash)> = Vec::new();
                     state_hashes
                 };
+
                 let state_hash = {
                     let mut sum_table = schema.state_hash_aggregator_mut();
                     for (key, hash) in state_hashes {
@@ -187,7 +190,6 @@ impl Blockchain {
             // Create block.
             let block = Block::new(
                 SCHEMA_MAJOR_VERSION,
-                ValidatorId(0), //proposer_id,
                 generator_id,
                 height,
                 timestamp,
@@ -229,52 +231,24 @@ impl Blockchain {
 mod tests {
     use bytes::BufMut;
     use std::io::Cursor;
-    use prost::Message;
-    use storage::{StorageKey, StorageValue};
-    use quick_protobuf::{Writer, Reader, MessageRead, MessageWrite};
+    use storage::{Database, MemoryDB, StorageKey, StorageValue};
 
     use std::collections::HashMap;
     use serde::{Deserialize, Serialize};
-    use rmp_serde::{Deserializer, Serializer};
 
     use std::io::{self, Write};
     use std::iter;
 
-    use super::DposBlock as Block;
-
     #[test]
-    fn test_storage_key_for_message_pack() {
-        #[derive(Debug, PartialEq, Deserialize, Serialize)]
-        struct Human {
-            age: u32,
-            name: String,
-        }
-
-        let mut buf = vec![];
-        assert_eq!(buf.len(), 0);
-        let val = Human {
-            age: 42,
-            name: "John".into(),
-        };
-
-        val.serialize(&mut Serializer::new(&mut buf)).unwrap();
-        assert!(buf.len() > 1);
+    fn test_genesis(){
+        let database = MemoryDB::new();
+        let mut bc = super::Blockchain::new(database);
+        bc.create_genesis_block(super::GenesisConfig::new());
+        writeln!(io::stdout(), "{}", bc.last_hash()).unwrap();
+        let block = bc.last_block();
+        writeln!(io::stdout(), "{:#?}", block);
     }
 
-    #[test]
-    fn test_storage_key_for_block() {
-        let mut block = Block::default();
-        block.height = 1_000;
-        block.timestamp = 2_000;
-
-        let block_size = block.get_size() - 2;
-        let mut buffer = Vec::with_capacity(block_size);
-        buffer.extend(iter::repeat(0).take(block_size));
-        block.write(&mut buffer);
-
-        writeln!(io::stdout(), "{}", buffer[0]).unwrap();
-
-        let new_block: Block = Block::read(&buffer);
-        assert_eq!(new_block.height, block.height);
+    fn initDB() {
     }
 }
