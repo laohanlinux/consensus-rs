@@ -26,6 +26,7 @@ pub fn get_active_delegates<'a>(height: Height) -> Vec<&'a str> {
     ACTIVE_DELEGATES.to_vec()
 }
 
+/// this is a epoch time
 pub fn get_time(time_spec: Timespec) -> i64{
      return epoch_time(time_spec)
 }
@@ -36,10 +37,14 @@ pub fn get_real_time(time_spec: Timespec) -> i64 {
     (epoch_time + begin_epoch_time()) * 1000
 }
 
-pub fn get_slot_number(epoch_time: i64) -> i64 {
+pub fn get_slot_number(mut epoch_time: i64) -> i64 {
+    if epoch_time == 0 {
+        epoch_time = time::get_time().sec
+    }
     return epoch_time / INTERVAL
 }
 
+/// this is epoch time
 pub fn get_slot_time(slot: i64) -> i64{
     return slot * INTERVAL
 }

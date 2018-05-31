@@ -41,6 +41,7 @@ use vec_map::VecMap;
 use byteorder::{ByteOrder, LittleEndian};
 use failure;
 use time::{self, Timespec, Duration};
+use chrono::*;
 
 use std::{fmt, iter, mem, panic};
 use std::sync::Arc;
@@ -54,6 +55,7 @@ use crypto::{self, CryptoHash, Hash};
 use storage::{Database, Error, Fork, Patch, Snapshot, StorageKey, StorageValue};
 use helpers::{Height, Round, ValidatorId};
 use encoding::Error as MessageError;
+use consensue::{slot, delegates};
 
 mod block;
 #[macro_use]
@@ -138,8 +140,13 @@ impl Blockchain {
             }
             self.merge(fork.into_patch())?;
 
-         
-            self.create_patch(cfg.genesis_generator_id,Height::zero(), cfg.genesis_timestamp, &[]).1
+            // time --> slot ---> delegates
+            let timestamp = Timespec::new(cfg.genesis_timestamp, 0);
+            let epoch_time = slot::get_time(timestamp);
+            let block_slot = slot::get_slot_number(epoch_time);
+            let (delegate_id, _) = delegates::get_block_slot_data(block_slot, Height::zero()).unwrap();
+            let delegate_id = delegate_id.to_string();
+            self.create_patch(delegate_id.into_bytes(), Height::zero(), cfg.genesis_timestamp, &[]).1
         };
 
         self.merge(patch)?;
@@ -232,6 +239,7 @@ mod tests {
     use bytes::BufMut;
     use std::io::Cursor;
     use storage::{Database, MemoryDB, StorageKey, StorageValue};
+    use super::slot;
 
     use std::collections::HashMap;
     use serde::{Deserialize, Serialize};
@@ -249,6 +257,32 @@ mod tests {
         writeln!(io::stdout(), "{:#?}", block);
     }
 
-    fn initDB() {
+    #[test]
+    fn test_generate_block(){
+        let database = MemoryDB::new();
+        let genesis_config = super::GenesisConfig::new();
+        let mut bc = super::Blockchain::new(database);
+
+        {
+            bc.create_genesis_block(super::GenesisConfig::new());
+        }
+
+        let epoch = slot::get_time(super::Timespec::new(genesis_config.genesis_timestamp,0));
+        let mut current_slot = slot::get_slot_number(epoch);
+        let mut current_height = 0;
+        for height in range (1, 100) {
+            current_height = current_height + height;
+            current_slot = current_height + 1;
+            let sleep_time = slot::get_slot_time(current_slot);
+
+
+            // time --> slot ---> delegates
+            let next_slot = super::delegates::get_block_slot_data();
+            let epoch_time = slot::get_time(timestamp);
+            let block_slot = slot::get_slot_number(epoch_time);
+            let (delegate_id, _) = delegates::get_block_slot_data(block_slot, Height::zero()).unwrap();
+            let delegate_id = delegate_id.to_string();
+            self.create_patch(delegate_id.into_bytes(), Height::zero(), cfg.genesis_timestamp, &[]).1
+        }
     }
 }
