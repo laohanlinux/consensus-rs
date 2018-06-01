@@ -31,7 +31,7 @@ pub fn get_time(time_spec: Timespec) -> i64{
      return epoch_time(time_spec)
 }
 
-// accurate to milliseconds
+// epoch time, accurate to milliseconds
 pub fn get_real_time(time_spec: Timespec) -> i64 {
     let epoch_time = get_time(time_spec);
     (epoch_time + begin_epoch_time()) * 1000

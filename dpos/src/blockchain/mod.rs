@@ -236,16 +236,18 @@ impl Blockchain {
 
 #[cfg(test)]
 mod tests {
-    use bytes::BufMut;
-    use std::io::Cursor;
     use storage::{Database, MemoryDB, StorageKey, StorageValue};
     use super::slot;
 
-    use std::collections::HashMap;
     use serde::{Deserialize, Serialize};
 
+    use bytes::BufMut;
+    use std::io::Cursor;
+    use std::collections::HashMap;
     use std::io::{self, Write};
     use std::iter;
+    use std::thread;
+    use std::time;
 
     #[test]
     fn test_genesis(){
@@ -265,24 +267,33 @@ mod tests {
 
         {
             bc.create_genesis_block(super::GenesisConfig::new());
+            let block = bc.last_block();
+            writeln!(io::stdout(), "{:#?}", block).unwrap();
         }
 
+        // 获取最新的区块, 找出最新区块的时间戳，通过时间戳，计算出相应的slot。
+        // 如果上一区块的slot<current_slot，则表示当前块还为生产，则执行current_slot块
         let epoch = slot::get_time(super::Timespec::new(genesis_config.genesis_timestamp,0));
-        let mut current_slot = slot::get_slot_number(epoch);
-        let mut current_height = 0;
-        for height in range (1, 100) {
-            current_height = current_height + height;
-            current_slot = current_height + 1;
-            let sleep_time = slot::get_slot_time(current_slot);
+        let mut last_slot = slot::get_slot_number(epoch);
 
-
-            // time --> slot ---> delegates
-            let next_slot = super::delegates::get_block_slot_data();
-            let epoch_time = slot::get_time(timestamp);
-            let block_slot = slot::get_slot_number(epoch_time);
-            let (delegate_id, _) = delegates::get_block_slot_data(block_slot, Height::zero()).unwrap();
+        let mut next_slot = slot::get_next_slot();
+//        let mut next_height = 0;
+        for height in (1..100) {
+            while last_slot == next_slot {
+                thread::sleep_ms(1000);
+                next_slot = slot::get_next_slot();
+            }
+            // 到达下一周期
+            let next_epoch_time = slot::get_slot_number(next_slot);
+            let real_time = slot::get_real_time(super::Timespec::new(next_epoch_time, 0));
+            let next_height = super::Height(height);
+            let (delegate_id, block_time) = super::delegates::get_block_slot_data(next_slot, next_height).unwrap();
             let delegate_id = delegate_id.to_string();
-            self.create_patch(delegate_id.into_bytes(), Height::zero(), cfg.genesis_timestamp, &[]).1
+            let (block_hash, patch ) = bc.create_patch(delegate_id.into_bytes(), next_height, block_time, &[]);
+            last_slot = next_slot;
+            writeln!(io::stdout(), "generate new block, slot:{}, height:{}, bhash:{}, time: {}", next_slot, height, block_hash, block_time).unwrap();
+            let block = bc.last_block();
+            writeln!(io::stdout(), "{:#?}", block).unwrap();
         }
     }
 }
