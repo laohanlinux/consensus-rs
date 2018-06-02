@@ -277,21 +277,22 @@ mod tests {
         let mut last_slot = slot::get_slot_number(epoch);
 
         let mut next_slot = slot::get_next_slot();
-//        let mut next_height = 0;
-        for height in (1..100) {
+        for height in 1..100 {
             while last_slot == next_slot {
                 thread::sleep_ms(1000);
                 next_slot = slot::get_next_slot();
             }
             // 到达下一周期
-            let next_epoch_time = slot::get_slot_number(next_slot);
-            let real_time = slot::get_real_time(super::Timespec::new(next_epoch_time, 0));
+            let next_epoch_time = slot::get_slot_time(next_slot);
+            let real_time = slot::get_real_time(next_epoch_time);
             let next_height = super::Height(height);
-            let (delegate_id, block_time) = super::delegates::get_block_slot_data(next_slot, next_height).unwrap();
+            let (delegate_id, epoch_time) = super::delegates::get_block_slot_data(next_slot, next_height).unwrap();
+            let block_time = real_time;
             let delegate_id = delegate_id.to_string();
             let (block_hash, patch ) = bc.create_patch(delegate_id.into_bytes(), next_height, block_time, &[]);
+            bc.merge(patch).unwrap();
             last_slot = next_slot;
-            writeln!(io::stdout(), "generate new block, slot:{}, height:{}, bhash:{}, time: {}", next_slot, height, block_hash, block_time).unwrap();
+            writeln!(io::stdout(), "generate new block, slot:{}, height:{}, bhash:{}, btime: {}, realtime: {}", next_slot, height, block_hash, block_time, real_time).unwrap();
             let block = bc.last_block();
             writeln!(io::stdout(), "{:#?}", block).unwrap();
         }

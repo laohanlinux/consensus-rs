@@ -44,9 +44,6 @@ extern crate tokio_timer;
 extern crate toml;
 extern crate uuid;
 extern crate vec_map;
-
-// Test dependencies.
-#[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
 #[cfg(test)]

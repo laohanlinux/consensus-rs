@@ -22,8 +22,29 @@ pub const ACTIVE_DELEGATES:[&str; DELEGATES as usize] = [
     "j",
     "k"];
 
+lazy_static! {
+    static ref ACTIVE_DELEGATES_LIST: Vec<&'static str> = {
+        let mut active_delegates = vec![];
+        {
+            active_delegates.push("a");
+            active_delegates.push("b");
+            active_delegates.push("c");
+            active_delegates.push("d");
+            active_delegates.push("e");
+            active_delegates.push("f");
+            active_delegates.push("g");
+            active_delegates.push("h");
+            active_delegates.push("i");
+            active_delegates.push("j");
+            active_delegates.push("k");
+        }
+        active_delegates
+    };
+}
+
 pub fn get_active_delegates<'a>(height: Height) -> Vec<&'a str> {
-    ACTIVE_DELEGATES.to_vec()
+//    ACTIVE_DELEGATES.to_vec()
+    ACTIVE_DELEGATES_LIST.clone()
 }
 
 /// this is a epoch time
@@ -31,15 +52,15 @@ pub fn get_time(time_spec: Timespec) -> i64{
      return epoch_time(time_spec)
 }
 
-// epoch time, accurate to milliseconds
-pub fn get_real_time(time_spec: Timespec) -> i64 {
-    let epoch_time = get_time(time_spec);
-    (epoch_time + begin_epoch_time()) * 1000
+/// real time, accurate to milliseconds
+pub fn get_real_time(epoch_spec: i64) -> i64 {
+    (epoch_spec + begin_epoch_time()) * 1000
 }
 
+/// epoch_time time's slot
 pub fn get_slot_number(mut epoch_time: i64) -> i64 {
     if epoch_time == 0 {
-        epoch_time = time::get_time().sec
+        epoch_time = get_time(time::get_time());
     }
     return epoch_time / INTERVAL
 }
@@ -63,8 +84,7 @@ pub fn get_last_slot(next_slot: i64) -> i64 {
 
 // [time_spec - begin_time]
 fn epoch_time(time_spec: Timespec) -> i64 {
-    let epoch_time = begin_epoch_time();
-    time_spec.sec - epoch_time
+    time_spec.sec - begin_epoch_time()
 }
 
 // return begin epoch time
@@ -101,7 +121,9 @@ mod tests {
     #[test]
     fn test_get_real_time(){
         let time_now = super::time::get_time();
-        writeln!(io::stdout(), "real time {}", super::get_real_time(time_now)).unwrap();
+        let epoch_time = super::get_time(time_now);
+        assert_eq!(super::get_real_time(epoch_time), time_now.sec *1000);
+        writeln!(io::stdout(), "real time {}", super::get_real_time(epoch_time)).unwrap();
     }
 
     #[test]

@@ -7,7 +7,6 @@ use super::{util, slot};
 // TODO: add_delegate
 fn add_delegate() {}
 
-
 /// Generates delegates list and checks if block generator publicKey maches delegate id.
 pub fn validate_block_slot(block: Block) -> bool {
     // get the height delegates list
