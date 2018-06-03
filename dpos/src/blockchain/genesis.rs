@@ -16,9 +16,10 @@ pub struct GenesisConfig {
 }
 
 impl GenesisConfig {
+    pub const GENESIS_TIME:&'static str = "2017-12-19T16:39:57-08:00";
     pub fn new() -> Self {
-        let timestamp = time::get_time();
-        Self::new_with_consensus(timestamp.sec, ConsensusConfig::default())
+        let genesis_time = DateTime::parse_from_rfc3339(Self::GENESIS_TIME).unwrap();
+        Self::new_with_consensus(genesis_time.timestamp(), ConsensusConfig::default())
     }
 
     /// Creates a configuration from the given consensus configuration and list public keys.

@@ -232,6 +232,17 @@ impl Blockchain {
     ) -> Result<(), failure::Error> {
         Ok(())
     }
+    /// TODO:
+    pub fn commit ( &mut self, patch: &Patch, block_hash: Hash) -> Result<(), Error>{
+        let patch = {
+            let mut fork = self.db.fork();
+            fork.merge(patch.clone());
+            fork.into_patch()
+        };
+        self.merge(patch)?;
+        Ok(())
+    }
+
 }
 
 #[cfg(test)]
@@ -287,10 +298,10 @@ mod tests {
             let real_time = slot::get_real_time(next_epoch_time);
             let next_height = super::Height(height);
             let (delegate_id, epoch_time) = super::delegates::get_block_slot_data(next_slot, next_height).unwrap();
-            let block_time = real_time;
+            let block_time = real_time / 1000;
             let delegate_id = delegate_id.to_string();
             let (block_hash, patch ) = bc.create_patch(delegate_id.into_bytes(), next_height, block_time, &[]);
-            bc.merge(patch).unwrap();
+            bc.commit(&patch, block_hash).unwrap();
             last_slot = next_slot;
             writeln!(io::stdout(), "generate new block, slot:{}, height:{}, bhash:{}, btime: {}, realtime: {}", next_slot, height, block_hash, block_time, real_time).unwrap();
             let block = bc.last_block();
