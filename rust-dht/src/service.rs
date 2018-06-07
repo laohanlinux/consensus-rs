@@ -258,7 +258,7 @@ pub mod test {
     fn test_ping_find_clean() {
         let node_table = DummyNodeTable { node: None };
         let mut svc: Service<TestsIdType, net::SocketAddr, DummyNodeTable, String> =
-            Service::new(node_table);
+            Service::new(node_table); // server.id = 42
         let node = test::new_node(test::make_id(43));
 
         assert!(svc.handler.on_ping(&node));
