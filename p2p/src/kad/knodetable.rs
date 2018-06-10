@@ -18,9 +18,7 @@ use std::cmp;
 use std::fmt::Debug;
 use std::collections::VecDeque;
 
-use super::GenericId;
-use super::GenericNodeTable;
-use super::Node;
+use super::base::{GenericId, GenericNodeTable, Node};
 
 
 // TODO(divius): make public?

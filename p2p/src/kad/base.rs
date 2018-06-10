@@ -15,6 +15,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 use std::net;
 
+use tokio_io::codec::{Decoder, Encoder};
 use rustc_serialize as serialize;
 use rustc_serialize::hex::ToHex;
 use rustc_serialize::hex::FromHex;
@@ -138,7 +139,7 @@ pub trait GenericNodeTable<TId, TAddr> : Send + Sync
 ///
 /// Every node has an address (IP and port) and a numeric ID, which is
 /// used to calculate metrics and look up data.
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Message)]
 pub struct Node<TId, TAddr> {
     /// Network address of the node.
     pub address: TAddr,
@@ -170,12 +171,12 @@ impl<TId> serialize::Encodable for Node<TId, net::SocketAddr>
         where TId: GenericId {
     fn encode<S:serialize::Encoder> (&self, s: &mut S) -> Result<(), S::Error> {
         s.emit_struct("Node", 2, |s| {
-            try!(s.emit_struct_field("address", 0, |s2| {
+            s.emit_struct_field("address", 0, |s2| {
                 let addr = format!("{}", self.address);
                 addr.encode(s2)
-            }));
+            })?;
 
-            try!(s.emit_struct_field("id", 1, |s2| self.id.encode(s2)));
+            s.emit_struct_field("id", 1, |s2| self.id.encode(s2))?;
 
             Ok(())
         })
@@ -186,8 +187,8 @@ impl<TId> serialize::Decodable for Node<TId, net::SocketAddr>
         where TId: GenericId {
     fn decode<D:serialize::Decoder> (d : &mut D) -> Result<Node<TId, net::SocketAddr>, D::Error> {
         d.read_struct("Node", 2, |d| {
-            let addr = try!(d.read_struct_field("address", 0, |d2| {
-                let s = try!(d2.read_str());
+            let addr = d.read_struct_field("address", 0, |d2| {
+                let s = d2.read_str()?;
                 match FromStr::from_str(&s) {
                     Ok(addr) => Ok(addr),
                     Err(e) => {
@@ -195,9 +196,9 @@ impl<TId> serialize::Decodable for Node<TId, net::SocketAddr>
                         Err(d2.error(&err))
                     }
                 }
-            }));
+            })?;
 
-            let id = try!(d.read_struct_field("id", 1, TId::decode));
+            let id = d.read_struct_field("id", 1, TId::decode)?;
 
             Ok(Node { address: addr, id: id })
         })

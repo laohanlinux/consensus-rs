@@ -13,8 +13,7 @@ use std::marker;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use super::{GenericId, GenericNodeTable, Node};
-
+use super::base::{GenericId, GenericNodeTable, Node};
 
 static MAX_NODE_COUNT: usize = 16;
 

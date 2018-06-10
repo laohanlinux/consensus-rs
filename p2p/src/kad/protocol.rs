@@ -8,7 +8,7 @@
 
 //! Generic protocol bits for implementing custom protocols.
 
-use super::{GenericId, Node};
+use super::base::{GenericId, Node};
 
 
 /// Payload in the request.
