@@ -48,21 +48,9 @@ impl actix::io::WriteHandler<io::Error> for Session{}
 /// To use `Framed` with an actor, we have to implement `StreamHandler` trait
 impl StreamHandler<RequestType, io::Error> for Session {
     /// This is main event loop for client requests
-    fn handle(&mut self, msg: io::Result<Option<RequestType>>, ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: RequestType, ctx: &mut Self::Context) {
         match msg {
-            Ok(req) =>{
-                // TODO
-                if req.RequestPayload == RequestPayload::Ping {
-                    self.hb = Instant::now();
-//                    let resp = ResponseType {
-//
-//                    }
-//                    self.framed.write(Response{})
-                }
-                // TODO check the return value
-                self.addr.do_send(req);
-            }
-            Err(_) => {},
+            RequestType {RequestPayload: RequestPayload::Ping} => {},
         }
     }
 }
@@ -98,6 +86,9 @@ impl Session {
                 address: "127.0.0.1:8080".parse().unwrap(),
             };
             let pong = ResponseType{
+                request: ResponseType{
+
+                },
                 responder: node,
                 payload: ResponsePayload::NoResult,
             };

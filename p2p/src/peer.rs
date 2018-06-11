@@ -3,7 +3,7 @@ use actix::prelude::*;
 use std::net;
 use super::base::{Node};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 
 pub struct Connect {
     pub addr: Node<u64, net::SocketAddr>,

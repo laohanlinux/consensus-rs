@@ -1,11 +1,10 @@
 use actix::prelude::*;
-use rand::{self, Rng};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::net;
 
 use session;
 use kad::base::Node;
-use kad::protocol::{Request as KadRequest, RequestPayload as KadRequestPayload,
+use codec::{Request as KadRequest, RequestPayload as KadRequestPayload,
                     Response as KadResponse, ResponsePayload as KadResponsePayload};
 
 /// Message for server communications
@@ -105,9 +104,10 @@ impl Handler<Disconnect> for Server {
 
 // TODO
 /// Handler for Message message, example out logic call
-
 impl Handler<KadRequest<u64, net::SocketAddr, Vec<u8>>> for Server {
-    type Result = KadResponse<u64, net::SocketAddr, Vec<u8>>;
+    // type Result = KadResponse<u64, net::SocketAddr, Vec<u8>>;
+    type Result = ();
+
     fn handle(&mut self, msg: KadRequest<u64, net::SocketAddr, Vec<u8>>, _: &mut Context<Self>) {
         match msg {
             KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Ping} => {

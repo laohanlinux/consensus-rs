@@ -1,3 +1,4 @@
+use actix::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde_json as json;
@@ -12,6 +13,20 @@ pub struct Request<TId, TAddr, TValue>{
     pub caller: Node<TId, TAddr>,
     pub request_id: u64,
     pub payload: RequestPayload<u64, TValue>,
+}
+
+impl<TId, TAddr, TValue> Request <TId, TAddr, TValue> {
+    // TODO
+    fn new(id: TId, addr: TAddr) -> Request<TId, TAddr, TValue> {
+        Request {
+            caller: Node{
+                address: addr,
+                id,
+            },
+            request_id: 1000,
+            payload: RequestPayload::Ping,
+        }
+    }
 }
 
 /// Payload in the request.
@@ -38,6 +53,7 @@ pub struct Response<TId, TAddr, TValue> {
     pub responder: Node<TId, TAddr>,
     pub payload: ResponsePayload<TId, TAddr, TValue>
 }
+
 
 /// |2Byte|xxxx|
 /// |msg Size|xxxx|
