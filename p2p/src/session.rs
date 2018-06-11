@@ -6,22 +6,27 @@ use tokio_io::io::WriteHalf;
 use tokio_tcp::TcpStream;
 
 use codec::{Request, Response, RequestPayload, ResponsePayload, Codec};
+
 use server::{Server, Disconnect};
+use kad::base::Node;
+
+type RequestType = Request<u64, net::SocketAddr, Vec<u8>>;
+type ResponseType = Response<u64, net::SocketAddr, Vec<u8>>;
 
 #[derive(Message)]
-pub struct Message(pub string);
+pub struct Message(String);
 
 pub struct Session {
     /// id
     id: u64,
 
     /// this is address of chat server
-    addr: Addr<_, Server>,
+    addr: Addr<Unsync, Server>,
     /// Client must send ping at least once per 10 seconds, otherwise we drop
     /// connection
     hb: Instant,
     /// Framed wrapper
-    framed: actix::io::FramedWrite<WriteHalf<TcpStream>, Codec>;
+    framed: actix::io::FramedWrite<WriteHalf<TcpStream>, Codec>,
 }
 
 impl Actor for Session {
@@ -40,8 +45,6 @@ impl Actor for Session {
 
 impl actix::io::WriteHandler<io::Error> for Session{}
 
-type RequestType = Request<u64, net::SocketAddr, Vec<u8>>;
-type ResponseType = Response<u64, net::SocketAddr, Vec<u8>>;
 /// To use `Framed` with an actor, we have to implement `StreamHandler` trait
 impl StreamHandler<RequestType, io::Error> for Session {
     /// This is main event loop for client requests
@@ -67,7 +70,7 @@ impl StreamHandler<RequestType, io::Error> for Session {
 impl Session {
     pub fn new(
         id: u64,
-        addr: Addr<_, Server>,
+        addr: Addr<Unsync, Server>,
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, Codec>,
     ) -> Session {
         Session {
@@ -90,7 +93,15 @@ impl Session {
                 // stop actor
                 ctx.stop();
             }
-            act.framed.write(ChatResponse::Ping);
+            let node = Node {
+                id: self.id,
+                address: "127.0.0.1:8080".parse().unwrap(),
+            };
+            let pong = ResponseType{
+                responder: node,
+                payload: ResponsePayload::NoResult,
+            };
+            act.framed.write(pong);
             act.hb(ctx);
         });
     }

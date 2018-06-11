@@ -6,21 +6,21 @@ use std::net;
 use session;
 use kad::base::Node;
 use kad::protocol::{Request as KadRequest, RequestPayload as KadRequestPayload,
-                    Response as KadResponse, ResponsePayload as KadResponse};
+                    Response as KadResponse, ResponsePayload as KadResponsePayload};
 
 /// Message for server communications
 
 /// New chat session is created
 pub struct Connect{
     pub node: Node<u64, net::SocketAddr>,
-    pub addr: Addr<session::Session, _>,
+    pub addr: Addr<Unsync, session::Session>,
 }
 
 /// Response type for Connect message.
 ///
 /// Chat server returns unique session id
 impl actix::Message for Connect {
-    type Result = usize;
+    type Result = ();
 }
 
 /// Session is disconnected
@@ -40,7 +40,7 @@ pub struct Message{
 }
 
 pub struct Server {
-    sessions: HashMap<u64, Addr<_,session::Session>>,
+    sessions: HashMap<u64, Addr<Unsync,session::Session>>,
 }
 
 impl Default for Server {
@@ -109,7 +109,7 @@ impl Handler<Disconnect> for Server {
 impl Handler<KadRequest<u64, net::SocketAddr, Vec<u8>>> for Server {
     type Result = KadResponse<u64, net::SocketAddr, Vec<u8>>;
     fn handle(&mut self, msg: KadRequest<u64, net::SocketAddr, Vec<u8>>, _: &mut Context<Self>) {
-        match KadRequest {
+        match msg {
             KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Ping} => {
                 // TODO
             }
