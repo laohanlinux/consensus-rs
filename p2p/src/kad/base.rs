@@ -147,6 +147,12 @@ pub struct Node<TId, TAddr> {
     pub id: TId
 }
 
+impl <TId, TAddr> Node<TId, TAddr> {
+    pub fn new(id: TId, address: TAddr) -> Node<TId, TAddr>{
+        Node{id, address}
+    }
+}
+
 /// Trait representing the API.
 pub trait GenericAPI<TId, TAddr>
         where TId: GenericId {

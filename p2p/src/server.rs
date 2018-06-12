@@ -5,7 +5,7 @@ use std::net;
 
 use session;
 use kad::base::Node;
-use kad::protocol::{Request as KadRequest, RequestPayload as KadRequestPayload,
+use codec::{Request as KadRequest, RequestPayload as KadRequestPayload,
                     Response as KadResponse, ResponsePayload as KadResponsePayload};
 
 /// Message for server communications
@@ -57,12 +57,12 @@ impl Server {
         match msg {
             Message{id:0, msg: msg} => {
                 self.sessions.iter().for_each(|(_, addr)|{
-                    addr.do_send(msg.to_string());
+                    addr.do_send(session::Message(msg.clone()));
                 });
             },
-            Message{id: ref id, msg: msg} => {
-                if let Some(addr) = self.sessions.get(id) {
-                    addr.do_send(msg.to_string());
+            Message{id: id, msg: msg} => {
+                if let Some(addr) = self.sessions.get(&id) {
+                    addr.do_send(session::Message(msg.clone()));
                 }
             },
         }
@@ -80,16 +80,15 @@ impl Actor for Server {
 impl Handler<Connect> for Server {
     type Result = ();
 
-    fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result{
+    fn handle(&mut self, msg: Connect, _: &mut Context<Self>){
         println!("new connect is comming...");
         let id = msg.node.id;
         // TODO send a dump connect msg
         if self.sessions.get(&id).is_some() {
-            return Ok(());
+            return ;
         }
         // TODO add kad logic
         self.sessions.entry(id).or_insert(msg.addr);
-        Ok(())
     }
 }
 
@@ -105,23 +104,32 @@ impl Handler<Disconnect> for Server {
 
 // TODO
 /// Handler for Message message, example out logic call
+impl<TId: 'static, TAddr: 'static, TValue: 'static> Handler<KadRequest<TId, TAddr, TValue>> for Server {
 
-impl Handler<KadRequest<u64, net::SocketAddr, Vec<u8>>> for Server {
-    type Result = KadResponse<u64, net::SocketAddr, Vec<u8>>;
-    fn handle(&mut self, msg: KadRequest<u64, net::SocketAddr, Vec<u8>>, _: &mut Context<Self>) {
+    type Result = KadResponse<TId, TAddr, TValue>;
+
+    fn handle(&mut self, msg: KadRequest<TId, TAddr, TValue>, _: &mut Context<Self>) -> KadResponse<TId, TAddr, TValue> {
+
+        // TODO
+        let node = Node::new(0, "127.0.0.1:8080");
+        let request:KadRequest<i32, &str, Vec<u8>> = KadRequest::new(node.clone(), 0, KadRequestPayload::Ping);
+        let payload = KadResponsePayload::NoResult;
+        let response  = KadResponse::new(request, node, payload);
         match msg {
             KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Ping} => {
                 // TODO
-            }
+                unimplemented!();
+            },
             KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::FindNode(id)} => {
                 // TODO
-            }
+                unimplemented!();
+            },
             KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::FindValue(_)} => {
                 unimplemented!();
-            }
+            },
             KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Store(_, _)} => {
                 unimplemented!();
-            }
+            },
         }
     }
 }

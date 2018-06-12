@@ -14,7 +14,7 @@ type RequestType = Request<u64, net::SocketAddr, Vec<u8>>;
 type ResponseType = Response<u64, net::SocketAddr, Vec<u8>>;
 
 #[derive(Message)]
-pub struct Message(String);
+pub struct Message(pub String);
 
 pub struct Session {
     /// id
@@ -48,21 +48,21 @@ impl actix::io::WriteHandler<io::Error> for Session{}
 /// To use `Framed` with an actor, we have to implement `StreamHandler` trait
 impl StreamHandler<RequestType, io::Error> for Session {
     /// This is main event loop for client requests
-    fn handle(&mut self, msg: io::Result<Option<RequestType>>, ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: RequestType, ctx: &mut Self::Context) {
         match msg {
-            Ok(req) =>{
-                // TODO
-                if req.RequestPayload == RequestPayload::Ping {
-                    self.hb = Instant::now();
+            RequestType{payload: RequestPayload::Ping, ..} => {
+                self.hb = Instant::now();
 //                    let resp = ResponseType {
 //
 //                    }
 //                    self.framed.write(Response{})
-                }
+
                 // TODO check the return value
-                self.addr.do_send(req);
-            }
-            Err(_) => {},
+               // self.addr.do_send(req);
+            },
+            _request => {
+
+            },
         }
     }
 }
@@ -85,24 +85,33 @@ impl Session {
     ///
     /// also this method check heartbeats from client
     fn hb(&self, ctx: &mut actix::Context<Self>) {
-        ctx.run_later(Duration::new(1, 0), |act, ctx|{
-            // check client heartbeats from client
-            if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
-                // heartbeat timed out
-                println!("Client heartbeat failed, disconnecting!");
-                // stop actor
-                ctx.stop();
-            }
-            let node = Node {
-                id: self.id,
-                address: "127.0.0.1:8080".parse().unwrap(),
-            };
-            let pong = ResponseType{
-                responder: node,
-                payload: ResponsePayload::NoResult,
-            };
-            act.framed.write(pong);
-            act.hb(ctx);
-        });
+//        ctx.run_later(Duration::new(1, 0), |act, ctx|{
+//            // check client heartbeats from client
+//            if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
+//                // heartbeat timed out
+//                println!("Client heartbeat failed, disconnecting!");
+//                // stop actor
+//                ctx.stop();
+//            }
+//            let node = Node {
+//                id: self.id,
+//                address: "127.0.0.1:8080".parse().unwrap(),
+//            };
+//            // TODO
+//            let pong = ResponseType{
+//                request: Request::new(node, 0, RequestPayload::Ping),
+//                responder: node,
+//                payload: ResponsePayload::NoResult,
+//            };
+//            act.framed.write(pong);
+//            act.hb(ctx);
+//        });
+    }
+}
+
+impl Handler<Message> for Session {
+    type Result = ();
+    fn handle(&mut self, msg: Message, _: &mut Context<Self>) {
+
     }
 }

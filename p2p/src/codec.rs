@@ -2,16 +2,33 @@ use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
 use serde_json as json;
 use tokio_io::codec::{Decoder, Encoder};
+use actix::prelude::*;
+use actix::dev::{MessageResponse, ResponseChannel};
 use kad::base::Node;
 use std::net;
 use std::io;
 use std::marker::PhantomData;
 
-#[derive(Serialize, Deserialize, Debug, Message)]
-pub struct Request<TId, TAddr, TValue>{
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Request<TId:'static, TAddr: 'static, TValue> {
     pub caller: Node<TId, TAddr>,
     pub request_id: u64,
     pub payload: RequestPayload<u64, TValue>,
+}
+
+impl <TId:'static, TAddr:'static, TValue> Request <TId, TAddr, TValue>{
+    pub fn new(node: Node<TId, TAddr>, request_id: u64, payload: RequestPayload<u64, TValue>)
+        -> Request<TId, TAddr, TValue>{
+        Request {
+            caller: node,
+            request_id,
+            payload,
+        }
+    }
+}
+
+impl<TId:'static, TAddr:'static, TValue:'static> Message for Request <TId, TAddr, TValue> {
+    type Result = Response<TId, TAddr, TValue>;
 }
 
 /// Payload in the request.
@@ -25,18 +42,39 @@ pub enum RequestPayload<GenericId, TValue> {
 
 /// Payload in the response.
 #[derive(Serialize, Deserialize, Debug, Message)]
-pub enum ResponsePayload<TId, TAddr, TValue> {
+pub enum ResponsePayload<TId, TAddr: 'static, TValue> {
     NodesFound(Vec<Node<TId, TAddr>>),
     ValueFound(TValue),
     NoResult
 }
 
 /// Response structure.
-#[derive(Serialize, Deserialize, Debug, Message)]
-pub struct Response<TId, TAddr, TValue> {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Response<TId:'static, TAddr:'static, TValue:'static> {
     pub request: Request<TId, TAddr, TValue>,
     pub responder: Node<TId, TAddr>,
     pub payload: ResponsePayload<TId, TAddr, TValue>
+}
+
+impl<TId:'static, TAddr:'static, TValue:'static> Response<TId, TAddr, TValue> {
+    pub fn new(request: Request<TId, TAddr, TValue>, node: Node<TId, TAddr>, payload: ResponsePayload<TId, TAddr, TValue>) -> Response<TId, TAddr, TValue> {
+        Response{
+            request,
+            responder: node,
+            payload,
+        }
+    }
+}
+
+impl <A, M, TId, TAddr, TValue> MessageResponse<A, M> for Response<TId, TAddr, TValue>
+    where  A: Actor,
+           M:Message<Result = Response<TId, TAddr, TValue>>
+{
+    fn handle<R: ResponseChannel<M>>(self, _:&mut A::Context, tx: Option<R>) {
+       if let Some(tx) = tx {
+           tx.send(self);
+       }
+    }
 }
 
 /// |2Byte|xxxx|
