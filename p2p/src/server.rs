@@ -1,6 +1,5 @@
 use actix::prelude::*;
-use rand::{self, Rng};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::net;
 
 use session;

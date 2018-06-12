@@ -112,6 +112,5 @@ impl Session {
 impl Handler<Message> for Session {
     type Result = ();
     fn handle(&mut self, msg: Message, _: &mut Context<Self>) {
-
     }
 }
