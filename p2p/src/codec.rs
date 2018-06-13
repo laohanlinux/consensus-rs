@@ -10,15 +10,19 @@ use std::net;
 use std::io;
 use std::marker::PhantomData;
 
+pub type TId = u64;
+pub type TAddr = net::SocketAddr;
+pub type TValue = Vec<u8>;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Request<TId:'static, TAddr: 'static, TValue> {
     pub caller: Node<TId, TAddr>,
-    pub request_id: u64,
-    pub payload: RequestPayload<u64, TValue>,
+    pub request_id: TId,
+    pub payload: RequestPayload<TId, TValue>,
 }
 
 impl <TId:'static, TAddr:'static, TValue> Request <TId, TAddr, TValue>{
-    pub fn new(node: Node<TId, TAddr>, request_id: u64, payload: RequestPayload<u64, TValue>)
+    pub fn new(node: Node<TId, TAddr>, request_id: TId, payload: RequestPayload<TId, TValue>)
         -> Request<TId, TAddr, TValue>{
         Request {
             caller: node,
@@ -34,11 +38,11 @@ impl<TId:'static, TAddr:'static, TValue:'static> Message for Request <TId, TAddr
 
 /// Payload in the request.
 #[derive(Serialize, Deserialize, Debug, Message)]
-pub enum RequestPayload<GenericId, TValue> {
+pub enum RequestPayload<TId, TValue> {
     Ping,
-    FindNode(GenericId),
-    FindValue(GenericId),
-    Store(GenericId, TValue)
+    FindNode(TId),
+    FindValue(TId),
+    Store(TId, TValue)
 }
 
 /// Payload in the response.
@@ -84,7 +88,7 @@ impl <A, M, TId, TAddr, TValue> MessageResponse<A, M> for Response<TId, TAddr, T
 pub struct Codec;
 
 impl Decoder for Codec {
-    type Item = Request<u64, net::SocketAddr, Vec<u8>>;
+    type Item = Request<TId, TAddr, TValue>;
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -97,7 +101,7 @@ impl Decoder for Codec {
         if src.len() >= size + 2 {
             src.split_to(2);
             let buf = src.split_to(size);
-            Ok(Some(json::from_slice::<Request<u64, net::SocketAddr, Vec<u8>>>(&buf)?))
+            Ok(Some(json::from_slice::<Request<TId, TAddr, TValue>>(&buf)?))
         }else {
             Ok(None)
         }
@@ -107,7 +111,7 @@ impl Decoder for Codec {
 impl Encoder for Codec {
     type Item = Response<u64, net::SocketAddr, Vec<u8>>;
     type Error = io::Error;
-    fn encode(&mut self, msg: Response<u64, net::SocketAddr, Vec<u8>>,
+    fn encode(&mut self, msg: Response<TId, TAddr, TValue>,
               dst: &mut BytesMut) -> Result<(), Self::Error> {
         let msg = json::to_string(&msg).unwrap();
         let msg_ref: &[u8] = msg.as_ref();
