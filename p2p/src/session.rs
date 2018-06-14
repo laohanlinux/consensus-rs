@@ -85,27 +85,28 @@ impl Session {
     ///
     /// also this method check heartbeats from client
     fn hb(&self, ctx: &mut actix::Context<Self>) {
-//        ctx.run_later(Duration::new(1, 0), |act, ctx|{
-//            // check client heartbeats from client
-//            if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
-//                // heartbeat timed out
-//                println!("Client heartbeat failed, disconnecting!");
-//                // stop actor
-//                ctx.stop();
-//            }
-//            let node = Node {
-//                id: self.id,
-//                address: "127.0.0.1:8080".parse().unwrap(),
-//            };
-//            // TODO
-//            let pong = ResponseType{
-//                request: Request::new(node, 0, RequestPayload::Ping),
-//                responder: node,
-//                payload: ResponsePayload::NoResult,
-//            };
-//            act.framed.write(pong);
-//            act.hb(ctx);
-//        });
+        // TODO
+        let id = self.id;
+        ctx.run_later(Duration::new(1, 0), move |act, ctx|{
+            let node = Node {
+                id,
+                address: "127.0.0.1:8080".parse().unwrap()
+            };
+            let pong = ResponseType{
+                request: Request::new(node.clone(), 0, RequestPayload::Ping),
+                responder: node,
+                payload: ResponsePayload::NoResult,
+            };
+            // check client heartbeats from client
+            if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
+                // heartbeat timed out
+                println!("Client heartbeat failed, disconnecting!");
+                // stop actor
+                ctx.stop();
+            }
+            act.framed.write(pong);
+            act.hb(ctx);
+        });
     }
 }
 

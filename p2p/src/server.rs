@@ -3,6 +3,7 @@ use std::collections::{HashMap};
 use std::net;
 
 use session;
+use kad::knodetable::*;
 use kad::base::Node;
 use codec::{Request , RequestPayload, Response, ResponsePayload, TId, TAddr, TValue};
 
@@ -43,20 +44,29 @@ pub struct Message{
 }
 
 pub struct Server {
-    sessions: HashMap<u64, Addr<Unsync,session::Session>>,
+    tables: KNodeTable<TId, TAddr>,
+    sessions: HashMap<TId, Addr<Unsync,session::Session>>,
 }
 
 impl Default for Server {
     fn default() -> Server {
         Server {
+            tables: KNodeTable::new(0),
             sessions: HashMap::new(),
         }
     }
 }
 
 impl Server {
+    pub fn new(node_id: TId) -> Server {
+        Server {
+            tables: KNodeTable::new(node_id),
+            sessions: HashMap::new(),
+        }
+    }
+
     /// Send message to all nodes
-    fn send_message(&self, msg: Message) {
+    pub fn send_message(&self, msg: Message) {
         match msg {
             Message{id:0, msg: msg} => {
                 self.sessions.iter().for_each(|(_, addr)|{
@@ -105,64 +115,63 @@ impl Handler<Disconnect> for Server {
     }
 }
 
-// TODO
-/// Handler for Message message, example out logic call
-//impl<TId: 'static, TAddr: 'static, TValue: 'static> Handler<KadRequest<TId, TAddr, TValue>> for Server {
-//
-//    type Result = KadResponse<TId, TAddr, TValue>;
-//
-//    fn handle(&mut self, msg: KadRequest<TId, TAddr, TValue>, _: &mut Context<Self>) -> KadResponse<TId, TAddr, TValue> {
-//
-//        // TODO
-//        let node = Node::new(0, "127.0.0.1:8080");
-//        let request:KadRequest<i32, &str, Vec<u8>> = KadRequest::new(node.clone(), 0, KadRequestPayload::Ping);
-//        let payload = KadResponsePayload::NoResult;
-//        let response  = KadResponse::new(request, node, payload);
-//        match msg {
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Ping} => {
-//                // TODO
-//                unimplemented!();
-//            },
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::FindNode(id)} => {
-//                // TODO
-//                unimplemented!();
-//            },
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::FindValue(_)} => {
-//                unimplemented!();
-//            },
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Store(_, _)} => {
-//                unimplemented!();
-//            },
-//        }
-//    }
-//}
-
 impl Handler<Request<TId, TAddr, TValue>> for Server {
     type Result = KadResponse;
 
     fn handle(&mut self, msg: Request<TId, TAddr, TValue>, _: &mut Context<Self>) -> Response<TId, TAddr, TValue>{
         println!("{:?}", msg.payload);
-        match msg.payload {
-            RequestPayload::Ping => {},
-            _ => {},
+
+        match msg {
+            KadRequest{caller: caller, request_id: rid, payload: RequestPayload::Ping} => {
+                // TODO
+                unimplemented!();
+            },
+            KadRequest{caller: caller, request_id: rid, payload: RequestPayload::FindNode(id)} => {
+                // TODO
+                unimplemented!();
+            },
+            KadRequest{caller: caller, request_id: rid, payload: RequestPayload::FindValue(_)} => {
+                unimplemented!();
+            },
+            KadRequest{caller: caller, request_id: rid, payload: RequestPayload::Store(_, _)} => {
+                unimplemented!();
+            },
+        }
+        unimplemented!()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use codec::*;
+    use kad::base::Node;
+    use kad::base::GenericAPI;
+    use kad::base::GenericNodeTable;
+    use std::io::{self, Write};
+
+    #[test]
+    fn test_server(){
+        let id = 100;
+        let mut server = super::Server::new(id);
+        let index = server.tables.random_id();
+        writeln!(io::stdout(), "random id {}", index).unwrap();
+
+        for id in 0..99 {
+            let node = Node::new(id as TId, "127.0.0.1:8080".parse().unwrap());
+            server.tables.update(&node);
         }
 
-//        match msg {
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Ping} => {
-//                // TODO
-//                unimplemented!();
-//            },
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::FindNode(id)} => {
-//                // TODO
-//                unimplemented!();
-//            },
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::FindValue(_)} => {
-//                unimplemented!();
-//            },
-//            KadRequest{caller: caller, request_id: rid, payload: KadRequestPayload::Store(_, _)} => {
-//                unimplemented!();
-//            },
-//        }
-        unimplemented!()
+//        server.tables.buckets.iter().flat_map(|bucket| bucket.data.iter().collect()).collect().len();
+//        writeln!(io::stdout(), "table size {}", server.tables.len()).unwrap();
+
+        let count = server.tables.find(&82, 3);
+        count.iter().for_each(|node|{
+            writeln!(io::stdout(), "-->{}", node.id).unwrap();
+        });
+
+        let count = server.tables.pop_oldest();
+        writeln!(io::stdout(), "table old node count {}", count.len());
+        count.iter().for_each(|node|{writeln!(io::stdout(), "{}", node.id).unwrap();});
+        writeln!(io::stdout(), "table size {}", server.tables.buckets().len()).unwrap();
     }
 }

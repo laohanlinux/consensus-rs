@@ -5,7 +5,7 @@ authors = ["Rg <daimaldd@gmail.com>"]
 
 [dependencies]
 farmhash = "1.1.5"
-actix  = "0.5.8"
+actix  = "*"
 byteorder = "*"
 bytes = "*"
 serde = "1.0"
