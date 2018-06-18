@@ -111,6 +111,10 @@ impl<TId, TAddr, TNodeTable, TData> Service<TId, TAddr, TNodeTable, TData>
     pub fn clean_needed(&self) -> bool {
         self.handler.clean_needed
     }
+    ///
+    pub fn mut_handle(&mut self) -> &mut Handler<TId, TAddr, TNodeTable, TData> {
+        &mut self.handler
+    }
 
     /// Try to clean up the table by checking the oldest records.
     ///

@@ -135,6 +135,10 @@ impl<TId, TAddr> KBucket<TId, TAddr>
         }
     }
 
+    // 需要更新（都移动的栈的尾部）：1、节点已存在 2、新的节点
+    // 不需要更新：1、栈的存储空间已满，丢弃该节点
+    // true: 需要更新
+    // false: 不需要更新
     pub fn update(&mut self, node: &Node<TId, TAddr>) -> bool {
         if self.data.iter().any(|x| x.id == node.id) {
             self.update_position(node.clone());

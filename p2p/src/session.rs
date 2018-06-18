@@ -21,7 +21,7 @@ pub struct Session {
     id: u64,
 
     /// this is address of chat server
-    addr: Addr<Unsync, Server>,
+    addr: Addr<Server>,
     /// Client must send ping at least once per 10 seconds, otherwise we drop
     /// connection
     hb: Instant,
@@ -48,9 +48,9 @@ impl actix::io::WriteHandler<io::Error> for Session{}
 /// To use `Framed` with an actor, we have to implement `StreamHandler` trait
 impl StreamHandler<RequestType, io::Error> for Session {
     /// This is main event loop for client requests
-    fn handle(&mut self, msg: RequestType, ctx: &mut Self::Context) {
-        match msg {
-            RequestType{payload: RequestPayload::Ping, ..} => {
+    fn handle(&mut self, msg: io::Result<Option<RequestType>>, ctx: &mut Self::Context) {
+        match msg.unwrap() {
+            Some(RequestType{payload: RequestPayload::Ping, ..}) => {
                 self.hb = Instant::now();
 //                    let resp = ResponseType {
 //
@@ -70,7 +70,7 @@ impl StreamHandler<RequestType, io::Error> for Session {
 impl Session {
     pub fn new(
         id: u64,
-        addr: Addr<Unsync, Server>,
+        addr: Addr<Server>,
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, Codec>,
     ) -> Session {
         Session {

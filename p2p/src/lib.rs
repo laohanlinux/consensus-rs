@@ -8,6 +8,7 @@ extern crate tokio_io;
 extern crate tokio_tcp;
 extern crate rand;
 extern crate rustc_serialize;
+extern crate futures;
 
 #[macro_use]
 extern crate log;

@@ -13,6 +13,7 @@ use std::marker::PhantomData;
 pub type TId = u64;
 pub type TAddr = net::SocketAddr;
 pub type TValue = Vec<u8>;
+pub type TData = Vec<u8>;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Request<TId:'static, TAddr: 'static, TValue> {
