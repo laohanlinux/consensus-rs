@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use tokio_io::io::WriteHalf;
 use tokio_tcp::TcpStream;
 
-use codec::{Request, Response, RequestPayload, ResponsePayload, Codec, TId, TAddr, TValue};
+use codec::{Request, Response, RequestPayload, ResponsePayload,
+            RawCodec, RawMessage, P2PMessage, TId, TAddr, TValue};
 
 use server::{Server, Disconnect};
 use kad::base::{GenericId, Node};
@@ -26,7 +27,7 @@ pub struct Session {
     /// connection
     hb: Instant,
     /// Framed wrapper
-    framed: actix::io::FramedWrite<WriteHalf<TcpStream>, Codec>,
+    framed: actix::io::FramedWrite<WriteHalf<TcpStream>, RawCodec>,
 }
 
 impl Actor for Session {
@@ -46,35 +47,30 @@ impl Actor for Session {
 impl actix::io::WriteHandler<io::Error> for Session{}
 
 /// To use `Framed` with an actor, we have to implement `StreamHandler` trait
-impl StreamHandler<RequestType, io::Error> for Session {
+impl StreamHandler<RawMessage<TId, TAddr, TValue>, io::Error> for Session {
     /// This is main event loop for client requests
-    fn handle(&mut self, msg: io::Result<Option<RequestType>>, ctx: &mut Self::Context) {
-        writeln!(io::stdout(), "session receive client request msg").unwrap();
+    fn handle(&mut self, msg: io::Result<Option<RawMessage<TId, TAddr, TValue>>>, ctx: &mut Self::Context) {
         let msg = msg.unwrap();
-        if let Some(ref req) = msg {
-            match req.payload {
-                RequestPayload::Ping => {self.hb = Instant::now();},
-                _ => {},
-            }
+        writeln!(io::stdout(), "session receive client request msg").unwrap();
+        if msg.is_none() {
+            return
         }
-        // forward msg to server
-            self.addr.do_send(msg.unwrap());
+
+        let msg = msg.unwrap();
+        match msg {
+            RawMessage::P2P(p2p_msg) =>{
+//                self.proccess_raw_msg(p2p_msg,&mut ctx);
+            },
+            _ => unimplemented!()
+        }
     }
 }
-
-impl StreamHandler<ResponseType, io::Error> for Session {
-    fn handle(&mut self, msg: io::Result<Option<ResponseType>>, ctx: &mut Self::Context) {
-        writeln!(io::stdout(), "session receive client response msg, discard it").unwrap();
-    }
-}
-
-
 
 impl Session {
     pub fn new(
         node: Node<TId, TAddr>,
         addr: Addr<Server>,
-        framed: actix::io::FramedWrite<WriteHalf<TcpStream>, Codec>,
+        framed: actix::io::FramedWrite<WriteHalf<TcpStream>, RawCodec>,
     ) -> Session {
         Session {
             node,
@@ -96,6 +92,7 @@ impl Session {
                 responder: node.clone(),
                 payload: ResponsePayload::NoResult,
             };
+            let pong = RawMessage::new_p2p_response(pong);
             // check client heartbeats from client
             if Instant::now().duration_since(act.hb) > Duration::new(10, 0) {
                 // heartbeat timed out
@@ -111,12 +108,31 @@ impl Session {
     /// send a heartbeat message as client
     fn send_hb(&self, ctx: &mut Context<Self>) {
         let node = self.node.clone();
-//        ctx.run_later(Duration::new(1,0), move |act, ctx| {
-//            writeln!(io::stdout(), "client send a ping").unwrap();
-//            let req:Request<TId, TAddr, TValue> = Request::new(node, 100, RequestPayload::Ping);
-//            act.framed.write(req);
-//            act.hb(ctx);
-//        });
+        let ping = RequestType{
+            caller: self.node.clone(),
+            request_id: u64::gen(64),
+            payload: RequestPayload::Ping,
+        };
+
+        ctx.run_later(Duration::new(1,0), move |act, ctx| {
+            writeln!(io::stdout(), "client send a ping").unwrap();
+            let raw_message = RawMessage::new_p2p_request(ping);
+            act.framed.write(raw_message);
+            act.hb(ctx);
+        });
+    }
+
+    fn proccess_raw_msg(&self, msg: P2PMessage<TId, TAddr, TValue>,  ctx: &mut Context<Self>) {
+        match msg {
+            P2PMessage::Req(request) => {
+                self.addr.do_send(request);
+            },
+            P2PMessage::Resp(response) =>{
+                // TODO
+                //self.addr.do_send(response);
+                unimplemented!()
+            },
+        }
     }
 }
 

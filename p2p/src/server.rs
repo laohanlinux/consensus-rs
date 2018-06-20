@@ -13,7 +13,7 @@ use session;
 use kad::service;
 use kad::knodetable::*;
 use kad::base::Node;
-use codec::{Codec, Request , RequestPayload, Response, ResponsePayload, TId, TAddr, TValue, TData};
+use codec::{RawCodec, RawMessage, P2PMessage, Request , RequestPayload, Response, ResponsePayload, TId, TAddr, TValue, TData};
 
 type KadRequest = Request<TId, TAddr, TValue>;
 type KadRequestPayload = RequestPayload<TId, TValue>;
@@ -89,9 +89,9 @@ impl Handler<TcpConnect> for TcpServer {
         session::Session::create(move |ctx: &mut Context<session::Session>|{
             let (r, w) = msg.0.split();
             // 注册反序列化
-            session::Session::add_stream(FramedRead::new(r, Codec), ctx);
+            session::Session::add_stream(FramedRead::new(r, RawCodec), ctx);
             // 注册序列化
-            session::Session::new(node, addr, actix::io::FramedWrite::new(w, Codec, ctx))
+            session::Session::new(node, addr, actix::io::FramedWrite::new(w, RawCodec, ctx))
         });
     }
 }
