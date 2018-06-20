@@ -15,7 +15,7 @@ pub type TAddr = net::SocketAddr;
 pub type TValue = Vec<u8>;
 pub type TData = Vec<u8>;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Request<TId:'static, TAddr: 'static, TValue> {
     pub caller: Node<TId, TAddr>,
     pub request_id: TId,
@@ -38,7 +38,7 @@ impl<TId:'static, TAddr:'static, TValue:'static> Message for Request <TId, TAddr
 }
 
 /// Payload in the request.
-#[derive(Serialize, Deserialize, Debug, Message)]
+#[derive(Serialize, Deserialize, Debug, Clone, Message)]
 pub enum RequestPayload<TId, TValue> {
     Ping,
     FindNode(TId),
@@ -47,7 +47,7 @@ pub enum RequestPayload<TId, TValue> {
 }
 
 /// Payload in the response.
-#[derive(Serialize, Deserialize, Debug, Message)]
+#[derive(Serialize, Deserialize, Debug, Clone, Message)]
 pub enum ResponsePayload<TId, TAddr: 'static, TValue> {
     NodesFound(Vec<Node<TId, TAddr>>),
     ValueFound(TValue),
@@ -110,7 +110,7 @@ impl Decoder for Codec {
 }
 
 impl Encoder for Codec {
-    type Item = Response<u64, net::SocketAddr, Vec<u8>>;
+    type Item = Response<TId, TAddr, TValue>;
     type Error = io::Error;
     fn encode(&mut self, msg: Response<TId, TAddr, TValue>,
               dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -123,35 +123,43 @@ impl Encoder for Codec {
         Ok(())
     }
 }
-//
-//pub struct OutboundCode;
-//
-//impl Decoder for OutboundCode {
-//    type Item = Response<u64, net::SocketAddr, Vec<u8>>;
-//    type Error = io::Error;
-//
-//    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-//        let size = {
-//            if src.len() > 2 {
-//                return Ok(None);
-//            }
-//            BigEndian::read_u16(src.as_ref()) as usize
-//        };
-//        if src.len() >= size +2 {
-//            src.split_to(2);
-//            let buf = src.split_to(size);
-//            Ok(Some(json::from_slice::<Response<u64, net::SocketAddr, Vec<u8>>>(&buf)?))
-//        }else {
-//            Ok(None)
-//        }
-//    }
-//}
-//
-//impl Encoder for OutboundCode {
-//    type Item = Request<u64, net::SocketAddr, Vec<u8>>;
-//    type Error = io::Error;
-//
-//    fn encode(
-//        &mut self, msg: Request<u64, >
-//    )
-//}
+
+// client
+pub struct OutboundCode;
+
+impl Decoder for OutboundCode {
+    type Item = Response<TId, TAddr, TValue>;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let size = {
+            if src.len() > 2 {
+                return Ok(None);
+            }
+            BigEndian::read_u16(src.as_ref()) as usize
+        };
+        if src.len() >= size +2 {
+            src.split_to(2);
+            let buf = src.split_to(size);
+            Ok(Some(json::from_slice::<Response<TId, TAddr, TValue>>(&buf)?))
+        }else {
+            Ok(None)
+        }
+    }
+}
+
+impl Encoder for OutboundCode {
+    type Item = Request<TId, TAddr, TValue>;
+    type Error = io::Error;
+
+    fn encode(&mut self, msg: Request<TId, TAddr, TValue>,
+              dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let msg = json::to_string(&msg).unwrap();
+        let msg_ref: &[u8] = msg.as_ref();
+
+        dst.reserve(msg_ref.len() + 2);
+        dst.put_u16_be(msg_ref.len() as u16);
+        dst.put(msg_ref);
+        Ok(())
+    }
+}

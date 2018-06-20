@@ -27,8 +27,10 @@ use kad::protocol::*;
 
 mod peer;
 mod codec;
+mod codec2;
 mod session;
 mod server;
+mod client;
 pub mod kad;
 
 pub struct P2PProtocol{}

@@ -61,22 +61,37 @@ impl InnerMessage {
 }
 
 #[derive(Message)]
-struct TcpConnect(pub TcpStream, pub net::SocketAddr);
+struct TcpConnect(pub TcpStream, pub TValue);
+
+
+pub struct  TcpServer {
+    pub srv: Addr<Server>,
+}
+
+impl Actor for TcpServer {
+    type Context = Context<Self>;
+}
 
 /// Handle stream of TcpStream's
-impl Handler<TcpConnect> for Server {
+impl Handler<TcpConnect> for TcpServer {
     /// this is response for message, which is defined by `ResponseType` trait
     /// in this case we just return unit.
     type Result = ();
 
     fn handle(&mut self, msg: TcpConnect, _: &mut Context<Self>) {
+        writeln!(io::stdout(), "receive a client connect").unwrap();
+        let addr = self.srv.clone();
         // For each incoming connection we create `Session` actor
         // with out server address.
-        let id = farmhash::hash64(msg.1.to_string().as_bytes());
-        session::Session::create(move ||{
+        let peer_addr = msg.0.peer_addr().unwrap();
+        let id = farmhash::hash64(peer_addr.to_string().as_bytes());
+        let node = Node::new(id, peer_addr);
+        session::Session::create(move |ctx: &mut Context<session::Session>|{
             let (r, w) = msg.0.split();
+            // 注册反序列化
             session::Session::add_stream(FramedRead::new(r, Codec), ctx);
-            session::Session::new(id, self.clone(), actix::io::FramedWrite::new(w, ChatCodec, ctx))
+            // 注册序列化
+            session::Session::new(node, addr, actix::io::FramedWrite::new(w, Codec, ctx))
         });
     }
 }
@@ -92,6 +107,7 @@ impl Message for MockMessage {
 }
 
 pub struct Server {
+    node: Node<TId, TAddr>,
     kad_srv: service::Service<TId, TAddr, KNodeTable<TId, TAddr>, TData>,
     sessions: HashMap<TId, Addr<session::Session>>,
 }
@@ -101,6 +117,7 @@ impl Default for Server{
         let table = KNodeTable::new(0);
         let srv = service::Service::new(table);
         Server {
+            node: Node::new(0, "127.0.0.1:12233".parse().unwrap()),
             kad_srv: srv,
             sessions: HashMap::new(),
         }
@@ -108,10 +125,11 @@ impl Default for Server{
 }
 
 impl Server {
-    pub fn new(node_id: TId) -> Server {
-        let table = KNodeTable::new(node_id);
-        let srv = service::Service::new_with_id(table, node_id);
+    pub fn new(node: Node<TId, TAddr>) -> Server {
+        let table = KNodeTable::new(node.id);
+        let srv = service::Service::new_with_id(table, node.id);
         Server{
+            node,
             kad_srv:srv,
             sessions: HashMap::new(),
         }
@@ -146,7 +164,7 @@ impl Handler<Connect> for Server {
     type Result = ();
 
     fn handle(&mut self, msg: Connect, _: &mut Context<Self>){
-        println!("new connect is comming...");
+        writeln!(io::stdout(),"new connect is comming...").unwrap();
         let id = msg.node.id;
         // TODO send a dump connect msg
         if self.sessions.get(&id).is_some() {
@@ -171,25 +189,27 @@ impl Handler<Request<TId, TAddr, TValue>> for Server {
     type Result = KadResponse;
 
     fn handle(&mut self, msg: Request<TId, TAddr, TValue>, _: &mut Context<Self>) -> Response<TId, TAddr, TValue>{
-        println!("{:?}", msg.payload);
-
-        match msg {
+        writeln!(io::stdout(), "server receive session msg--> {:?}", msg.payload).unwrap();
+        let mut handle = self.kad_srv.mut_handle();
+        let request = msg.clone();
+        let response = match msg {
             KadRequest{caller: caller, request_id: rid, payload: RequestPayload::Ping} => {
+                handle.on_ping(&caller);
                 // TODO
-                unimplemented!();
+                KadResponse::new(request, self.node.clone(), ResponsePayload::NoResult)
             },
             KadRequest{caller: caller, request_id: rid, payload: RequestPayload::FindNode(id)} => {
-                // TODO
-                unimplemented!();
+                let nodes = handle.on_find_node(&caller, &id);
+                KadResponse::new(request, self.node.clone(), ResponsePayload::NodesFound(nodes))
             },
             KadRequest{caller: caller, request_id: rid, payload: RequestPayload::FindValue(_)} => {
-                unimplemented!();
+                unimplemented!()
             },
             KadRequest{caller: caller, request_id: rid, payload: RequestPayload::Store(_, _)} => {
-                unimplemented!();
+                unimplemented!()
             },
-        }
-        unimplemented!()
+        };
+        response
     }
 }
 
@@ -212,71 +232,109 @@ mod test {
     use super::*;
     use std::net;
     use std::str::FromStr;
+    use std::thread;
+    use std::time::Duration;
 
+    use futures::Future;
     use rand;
     use rand::Rng;
     use actix::{self, msgs, Actor, Addr, Arbiter, Context, System};
     use farmhash;
     use tokio;
+    use client::Client;
 
-    #[test]
-    fn test_server(){
-        let system = System::new("test");
-        let addr = "127.0.0.1:8888";
-        let srv = new_server(addr.as_bytes());
+    fn start_server(addr: String){
+        let system = System::new("test-server");
+        let id = farmhash::hash64(addr.as_bytes());
+        let node = Node::new(id, addr.parse().unwrap());
+        let mut srv = Server::new(node);
         let server:Addr<_> = srv.start();
-
-        let peer:Addr<Server> = {
-          new_server("127.0.0.1:8881".as_bytes()).start()
-        };
 
         System::run(move||{
             // Start p2p server
-            let addr = net::SocketAddr::from_str(addr);
+            let addr = net::SocketAddr::from_str(&addr).unwrap();
             let listener = TcpListener::bind(&addr).unwrap();
             // send a message to server
             let res = server.send(MockMessage{msg: "hello".to_string()});
             writeln!(io::stdout(), "Coming...").unwrap();
+
             tokio::spawn(res.map(|res|{
                 writeln!(io::stdout(), "server return value {:?}", res).unwrap();
-                System::current().stop();
+                //System::current().stop();
             }).map_err(|_|()));
 
+            TcpServer::create(|ctx| {
+                ctx.add_message_stream(listener.incoming().map_err(|_|()).map(|st|{
+                    let addr = st.peer_addr().unwrap();
+                    TcpConnect(st, addr.to_string().as_bytes().to_vec())
+                }));
+                TcpServer{srv:server}
+            });
 
+            // start a client to connect
+            writeln!(io::stdout(), "Running chat server on 127.0.0.1:12345").unwrap();
+        });
+    }
+
+    fn start_client(srv_addr: String){
+
+        //let system = System::new("test-client");
+        System::run(move ||{
+            writeln!(io::stdout(), "start client").unwrap();
+            let addr = net::SocketAddr::from_str(&srv_addr).unwrap();
+            tokio::spawn(TcpStream::connect(&addr)
+                .and_then(|stream|{
+                    let addr = Client::create(|ctx|{
+                        let local_addr = stream.local_addr().unwrap();
+                        let id = farmhash::hash64(local_addr.to_string().as_bytes());
+                        let local_node = Node::new(id, local_addr);
+                        let (r, w) = stream.split();
+                        ctx.add_stream(FramedRead::new(r, OutboundCode));
+                        Client{
+                            node: local_node,
+                            framed: actix::io::FramedWrite::new(
+                                w,
+                                OutboundCode,
+                                ctx,
+                            ),
+                        }
+                    });
+
+                    ::futures::future::ok(())
+                }).map_err(|e| {
+                  println!("Can not connect to server: {}", e);
+                  ::std::process::exit(1)
+                }),
+            );
+        });
+    }
+
+    #[test]
+    fn test_server(){
+        let join_server = thread::spawn(move ||{
+            start_server("127.0.0.1:8888".to_string());
         });
 
+        let join_client = thread::spawn(move||{
+            start_client("127.0.0.1:8888".to_string());
+        });
+
+        join_server.join().unwrap();
+        join_client.join().unwrap();
     }
 
-    fn new_server(id: &[u8]) -> Server{
-        let id = farmhash::hash64(id);
-        let mut server:Server = Server::new(id);
-        server
-        // insert a node
-//        for id in 1..1000 {
-//            let addr  = format!("127.0.0.1:{}", id);
-//            let id = farmhash::hash64(addr.as_bytes());
-//            let node:Node<TId, TAddr> = Node::new(id, addr.parse().unwrap());
-//            let handle = server.kad_srv.mut_handle();
-//            handle.on_ping(&node);
+//    fn new_peers(n: isize) -> Vec<Server>{
+//        let mut peers = Vec::new();
+//        for i in 0..n {
+//            let id =  rand::thread_rng().gen_range(1024, 4096);
+////            let addr = format!("127.0.0.1:{}", id);
+////            let id = farmhash::hash64(addr.as_bytes());
+////            let node:Node<TId, TAddr> = Node::new(id, addr.parse().unwrap());
+//            let server:Server = Server::new(id);
+//            peers.push(server);
 //        }
-    }
-
-    fn new_boot_node(id: &[u8]) -> Server {
-        new_server(id)
-    }
-
-    fn new_peers(n: isize) -> Vec<Server>{
-        let mut peers = Vec::new();
-        for i in 0..n {
-            let id =  rand::thread_rng().gen_range(1024, 4096);
-//            let addr = format!("127.0.0.1:{}", id);
-//            let id = farmhash::hash64(addr.as_bytes());
-//            let node:Node<TId, TAddr> = Node::new(id, addr.parse().unwrap());
-            let server:Server = Server::new(id);
-            peers.push(server);
-        }
-        peers
-    }
+//        peers
+//    }
 
     fn contract_peers(boot_node:&mut Server, peers: &mut Vec<Server>) {
         for server in peers.iter() {
