@@ -18,6 +18,8 @@ type ResponseType = Response<TId, TAddr, TValue>;
 pub struct Message(pub String);
 
 pub struct Session {
+    as_peer: bool,
+
     // local node id
     node: Node<TId, TAddr>,
 
@@ -35,6 +37,9 @@ impl Actor for Session {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         writeln!(io::stdout(), "started a session actor, node: {:?}", self.node).unwrap();
+        if self.as_peer {
+            self.send_hb(ctx);
+        }
     }
 
     fn stopping(&mut self, _: &mut Self::Context) -> Running {
@@ -73,11 +78,22 @@ impl Session {
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, RawCodec>,
     ) -> Session {
         Session {
+            as_peer: false,
             node,
             addr,
             framed,
             hb: Instant::now(),
         }
+    }
+
+    pub fn new_peer(
+        node:Node<TId, TAddr>,
+        addr: Addr<Server>,
+        framed:actix::io::FramedWrite<WriteHalf<TcpStream>, RawCodec>,
+    ) -> Session {
+        let mut ses = Session::new(node, addr, framed);
+        ses.as_peer = true;
+        ses
     }
 
     /// helper method that sends ping to client every second.

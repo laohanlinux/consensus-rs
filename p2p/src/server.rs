@@ -1,5 +1,6 @@
 use actix::prelude::*;
-use futures::Stream;
+use futures::{Future, Stream};
+use tokio;
 use tokio_io::codec::FramedRead;
 use tokio_io::AsyncRead;
 use tokio_tcp::{TcpListener, TcpStream};
@@ -60,10 +61,6 @@ impl InnerMessage {
     }
 }
 
-#[derive(Message)]
-struct TcpConnect(pub TcpStream, pub TValue);
-
-
 pub struct  TcpServer {
     pub srv: Addr<Server>,
 }
@@ -71,6 +68,9 @@ pub struct  TcpServer {
 impl Actor for TcpServer {
     type Context = Context<Self>;
 }
+
+#[derive(Message)]
+struct TcpConnect(pub TcpStream, pub TValue);
 
 /// Handle stream of TcpStream's
 impl Handler<TcpConnect> for TcpServer {
@@ -92,6 +92,28 @@ impl Handler<TcpConnect> for TcpServer {
             session::Session::add_stream(FramedRead::new(r, RawCodec), ctx);
             // 注册序列化
             session::Session::new(node, addr, actix::io::FramedWrite::new(w, RawCodec, ctx))
+        });
+    }
+}
+
+#[derive(Message)]
+struct TryConnect(pub TcpStream, pub TAddr);
+
+impl Handler<TryConnect> for TcpServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: TryConnect, _:&mut Context<Self>) {
+        writeln!(io::stdout(), "try to connect {}", msg.1.to_string()).unwrap();
+        let id = farmhash::hash64(msg.1.to_string().as_bytes());
+        let peer_addr = msg.1.to_string().parse().unwrap();
+        let node = Node::new(id, peer_addr);
+        let addr = self.srv.clone();
+        let (r, w) = msg.0.split();
+        session::Session::create(move |ctx|{
+            // 注册反序列化
+            session::Session::add_stream(FramedRead::new(r, RawCodec), ctx);
+            // 注册序列化
+            session::Session::new_peer(node, addr, actix::io::FramedWrite::new(w, RawCodec, ctx))
         });
     }
 }
@@ -243,38 +265,54 @@ mod test {
     use tokio;
     use client::Client;
 
-    fn start_server(addr: String){
+    fn start_server(addr: String) -> Addr<TcpServer> {
         let system = System::new("test-server");
         let id = farmhash::hash64(addr.as_bytes());
         let node = Node::new(id, addr.parse().unwrap());
         let mut srv = Server::new(node);
         let server:Addr<_> = srv.start();
 
-        System::run(move||{
-            // Start p2p server
-            let addr = net::SocketAddr::from_str(&addr).unwrap();
-            let listener = TcpListener::bind(&addr).unwrap();
-            // send a message to server
-            let res = server.send(MockMessage{msg: "hello".to_string()});
-            writeln!(io::stdout(), "Coming...").unwrap();
+        let addr = net::SocketAddr::from_str(&addr).unwrap();
+        let listener = TcpListener::bind(&addr).unwrap();
 
-            tokio::spawn(res.map(|res|{
-                writeln!(io::stdout(), "server return value {:?}", res).unwrap();
-                //System::current().stop();
-            }).map_err(|_|()));
-
-            TcpServer::create(|ctx| {
-                ctx.add_message_stream(listener.incoming().map_err(|_|()).map(|st|{
-                    let addr = st.peer_addr().unwrap();
-                    TcpConnect(st, addr.to_string().as_bytes().to_vec())
-                }));
-                TcpServer{srv:server}
-            });
+        TcpServer::create(move |ctx| {
+            ctx.add_message_stream(listener.incoming().map_err(|_|()).map(|st|{
+                let addr = st.peer_addr().unwrap();
+                TcpConnect(st, addr.to_string().as_bytes().to_vec())
+            }));
+            writeln!(io::stdout(), "Running chat server on {:?}", addr).unwrap();
+            TcpServer{srv:server}
+        })
 
             // start a client to connect
-            writeln!(io::stdout(), "Running chat server on 127.0.0.1:12345").unwrap();
-        });
+
+
+//        System::run(move||{
+//            // Start p2p server
+//            let addr = net::SocketAddr::from_str(&addr).unwrap();
+//            let listener = TcpListener::bind(&addr).unwrap();
+//            // send a message to server
+//            let res = server.send(MockMessage{msg: "hello".to_string()});
+//            writeln!(io::stdout(), "Coming...").unwrap();
+//
+//            tokio::spawn(res.map(|res|{
+//                writeln!(io::stdout(), "server return value {:?}", res).unwrap();
+//                //System::current().stop();
+//            }).map_err(|_|()));
+//
+//            TcpServer::create(|ctx| {
+//                ctx.add_message_stream(listener.incoming().map_err(|_|()).map(|st|{
+//                    let addr = st.peer_addr().unwrap();
+//                    TcpConnect(st, addr.to_string().as_bytes().to_vec())
+//                }));
+//                TcpServer{srv:server}
+//            });
+//
+//            // start a client to connect
+//            writeln!(io::stdout(), "Running chat server on 127.0.0.1:12345").unwrap();
+//        });
     }
+
 
     fn start_client(srv_addr: String){
 
@@ -307,6 +345,41 @@ mod test {
                 }),
             );
         });
+    }
+
+    #[test]
+    fn test_peer() {
+        let sys = System::new("test");
+        let tcp_addr1 = start_server("127.0.0.1:8888".to_string());
+        let tcp_addr2 = start_server("127.0.0.1:8889".to_string());
+        sys.run();
+        System::run(move||{
+            writeln!(io::stdout(),"stop....");
+            let addr = net::SocketAddr::from_str("127.0.0.1:8889").unwrap();
+            tokio::spawn(TcpStream::connect(&addr)
+                             .and_then(move |stream|{
+                                 writeln!(io::stdout(), "------------------");
+                                 tcp_addr1.do_send( TryConnect(stream,"127.0.0.1:8889".parse().unwrap()));
+                                 ::futures::future::ok(())
+                             }).map_err(|e| {
+                    writeln!(io::stdout(), "Can not connect to server: {}", e);
+                    ::std::process::exit(1)
+                }));
+        });
+//        System::run(move||{
+//            let tcp_addr1 = start_server("127.0.0.1:8888".to_string());
+//            writeln!(io::stdout(),"stop....");
+////            let tcp_addr2 = start_server("127.0.0.1:8889".to_string());
+////            let addr = net::SocketAddr::from_str("127.0.0.1:8889").unwrap();
+////            tokio::spawn(TcpStream::connect(&addr)
+////                             .and_then(move |stream|{
+////                                 tcp_addr1.do_send( TryConnect(stream,"127.0.0.1:8889".parse().unwrap()));
+////                                 ::futures::future::ok(())
+////                             }).map_err(|e| {
+////                    println!("Can not connect to server: {}", e);
+////                    ::std::process::exit(1)
+////                }));
+//        });
     }
 
     #[test]
