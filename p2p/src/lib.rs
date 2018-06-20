@@ -28,6 +28,7 @@ use kad::protocol::*;
 mod peer;
 mod codec;
 mod codec2;
+mod raw;
 mod session;
 mod server;
 mod client;
