@@ -283,34 +283,6 @@ mod test {
             writeln!(io::stdout(), "Running chat server on {:?}", addr).unwrap();
             TcpServer{srv:server}
         })
-
-            // start a client to connect
-
-
-//        System::run(move||{
-//            // Start p2p server
-//            let addr = net::SocketAddr::from_str(&addr).unwrap();
-//            let listener = TcpListener::bind(&addr).unwrap();
-//            // send a message to server
-//            let res = server.send(MockMessage{msg: "hello".to_string()});
-//            writeln!(io::stdout(), "Coming...").unwrap();
-//
-//            tokio::spawn(res.map(|res|{
-//                writeln!(io::stdout(), "server return value {:?}", res).unwrap();
-//                //System::current().stop();
-//            }).map_err(|_|()));
-//
-//            TcpServer::create(|ctx| {
-//                ctx.add_message_stream(listener.incoming().map_err(|_|()).map(|st|{
-//                    let addr = st.peer_addr().unwrap();
-//                    TcpConnect(st, addr.to_string().as_bytes().to_vec())
-//                }));
-//                TcpServer{srv:server}
-//            });
-//
-//            // start a client to connect
-//            writeln!(io::stdout(), "Running chat server on 127.0.0.1:12345").unwrap();
-//        });
     }
 
 
@@ -349,37 +321,21 @@ mod test {
 
     #[test]
     fn test_peer() {
-        let sys = System::new("test");
+        // tcp_addr1 --> connect ---> tcp_addr2
+        // session:xxx   ----------> session:xxxx
         let tcp_addr1 = start_server("127.0.0.1:8888".to_string());
         let tcp_addr2 = start_server("127.0.0.1:8889".to_string());
-        sys.run();
+
         System::run(move||{
-            writeln!(io::stdout(),"stop....");
             let addr = net::SocketAddr::from_str("127.0.0.1:8889").unwrap();
             tokio::spawn(TcpStream::connect(&addr)
-                             .and_then(move |stream|{
-                                 writeln!(io::stdout(), "------------------");
-                                 tcp_addr1.do_send( TryConnect(stream,"127.0.0.1:8889".parse().unwrap()));
-                                 ::futures::future::ok(())
-                             }).map_err(|e| {
-                    writeln!(io::stdout(), "Can not connect to server: {}", e);
-                    ::std::process::exit(1)
-                }));
+                .and_then(move |stream|{
+                    // try to connect peer
+                    tcp_addr1.do_send( TryConnect(stream,"127.0.0.1:8889".parse().unwrap()));
+                    ::futures::future::ok(())
+                })
+                .map_err(|e|{()}));
         });
-//        System::run(move||{
-//            let tcp_addr1 = start_server("127.0.0.1:8888".to_string());
-//            writeln!(io::stdout(),"stop....");
-////            let tcp_addr2 = start_server("127.0.0.1:8889".to_string());
-////            let addr = net::SocketAddr::from_str("127.0.0.1:8889").unwrap();
-////            tokio::spawn(TcpStream::connect(&addr)
-////                             .and_then(move |stream|{
-////                                 tcp_addr1.do_send( TryConnect(stream,"127.0.0.1:8889".parse().unwrap()));
-////                                 ::futures::future::ok(())
-////                             }).map_err(|e| {
-////                    println!("Can not connect to server: {}", e);
-////                    ::std::process::exit(1)
-////                }));
-//        });
     }
 
     #[test]

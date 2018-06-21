@@ -36,7 +36,7 @@ impl Actor for Session {
     type Context = actix::Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        writeln!(io::stdout(), "started a session actor, node: {:?}", self.node).unwrap();
+        writeln!(io::stdout(), "started a session actor(as peer-{}) node: {:?}", self.as_peer, self.node).unwrap();
         if self.as_peer {
             self.send_hb(ctx);
         }
@@ -56,7 +56,7 @@ impl StreamHandler<RawMessage<TId, TAddr, TValue>, io::Error> for Session {
     /// This is main event loop for client requests
     fn handle(&mut self, msg: io::Result<Option<RawMessage<TId, TAddr, TValue>>>, ctx: &mut Self::Context) {
         let msg = msg.unwrap();
-        writeln!(io::stdout(), "session receive client request msg").unwrap();
+        writeln!(io::stdout(), "session:{} receive client request msg", self.node.address.to_string()).unwrap();
         if msg.is_none() {
             return
         }
@@ -131,10 +131,10 @@ impl Session {
         };
 
         ctx.run_later(Duration::new(1,0), move |act, ctx| {
-            writeln!(io::stdout(), "client send a ping").unwrap();
+            writeln!(io::stdout(), "client:{} send a ping", node.address.to_string()).unwrap();
             let raw_message = RawMessage::new_p2p_request(ping);
             act.framed.write(raw_message);
-            act.hb(ctx);
+            act.send_hb(ctx);
         });
     }
 
