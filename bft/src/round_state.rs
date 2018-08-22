@@ -1,8 +1,10 @@
 use std::fmt;
 use std::time::Instant;
 
+use types::Time;
+
 struct RoundState {
-    height:  i64,
+    height: i64,
     round: i32,
     step: RoundStep,
     start_time: Instant,
@@ -25,22 +27,22 @@ impl fmt::Display for RoundStep {
         match *self {
             RoundStep::NewHeight => {
                 write!(f, "RoundStep::NewHeight").unwrap();
-            },
+            }
             RoundStep::NewRound => {
                 write!(f, "RoundStep::NewRound").unwrap();
-            },
+            }
             RoundStep::Propose => {
                 write!(f, "RoundStep::Propose").unwrap();
-            },
+            }
             RoundStep::Prevote => {
                 write!(f, "RoundStep::Prevote").unwrap();
-            },
+            }
             RoundStep::PreveoteWait => {
                 write!(f, "RoundStep::PreveoteWait").unwrap();
-            },
+            }
             RoundStep::Precommit => {
                 write!(f, "RoundStep::Precommit").unwrap();
-            },
+            }
             RoundStep::PrecommitWait => {
                 write!(f, "RoundStep::PreveoteWait").unwrap();
             }
@@ -52,9 +54,19 @@ impl fmt::Display for RoundStep {
     }
 }
 
+
+// Compressed version of the RoundState for use in RPC
+#[derive(Serialize, Deserialize, Debug)]
+struct RoundStateSimple {
+    HeightRoundStep: String,
+//    StateTime: Time,
+
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{self, Write};
+
     #[test]
     fn test_abc() {
         writeln!(io::stdout(), "{}", super::RoundStep::PrecommitWait).unwrap();
