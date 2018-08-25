@@ -2,6 +2,8 @@ use chrono::prelude::*;
 use util_rs;
 use bigint::U256;
 
+use common;
+
 pub const VERSION: u32 = 1;
 pub const VRF_SIZE: usize = 64;
 pub const MAX_PROPOSER_COUNT: isize = 32;
@@ -37,7 +39,7 @@ pub struct ChainConfig {
 }
 
 impl ChainConfig {
-    pub fn hash(&self) {
+    pub fn hash(&self) -> U256{
 
     }
 }
