@@ -8,6 +8,8 @@ extern crate serde_json;
 extern crate chrono;
 extern crate util_rs;
 extern crate hex;
+extern crate bigint;
+extern crate sha3;
 
 pub mod common;
 pub mod consensus;

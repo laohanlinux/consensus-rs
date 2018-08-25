@@ -1,5 +1,6 @@
 use chrono::prelude::*;
 use util_rs;
+use bigint::U256;
 
 pub const VERSION: u32 = 1;
 pub const VRF_SIZE: usize = 64;
@@ -35,6 +36,12 @@ pub struct ChainConfig {
     max_block_change_view: u32,
 }
 
+impl ChainConfig {
+    pub fn hash(&self) {
+
+    }
+}
+
 ///
 /// VBFT consensus payload, store on each block header
 ///
@@ -57,6 +64,14 @@ impl VRFValue {
     pub fn bytes(&self) -> Vec<u8> {
        self.0.to_vec()
     }
+    pub fn from_bytes(&mut self, b: &[u8]) -> Result<(), ()> {
+        assert_eq!(b.len(), VRF_SIZE);
+        self.0.iter_mut().fold(0, |acc, mut item| {
+           *item = b[acc];
+            acc+1
+        });
+        Ok(())
+    }
     pub fn is_nil(&self) -> bool {
         self.0.iter().all(|&x| x == 0)
     }
@@ -66,7 +81,7 @@ use std::fmt::{self, Formatter, Display};
 use hex;
 impl Display for VRFValue {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> Result<(), fmt::Error> {
-        let hex_str = hex::encode_upper(self.0);
+        let hex_str = hex::encode_upper(&self.bytes());
         writeln!(f, "{}", hex_str).unwrap();
         Ok(())
     }
@@ -77,8 +92,7 @@ mod test{
     #[test]
     fn test_vrf_value(){
         assert!(super::VRFValue::new().is_nil());
-        let vrf1 = super::VRFValue::new();
-        let vrf2    = vrf1.bytes();
-        println!("{}", vrf1);
+        let mut vrf1 = super::VRFValue::new();
+        let mut vrf2    = vrf1.bytes();
     }
 }

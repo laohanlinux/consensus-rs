@@ -1,3 +1,6 @@
+use sha3::{Sha3_256, Digest};
+use bigint::U256;
+
 use std::fmt::{self, Display};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -21,4 +24,14 @@ impl Display for HexBytes {
         writeln!(f, "{}", self.string()).unwrap();
         Ok(())
     }
+}
+
+pub fn as_256(data: &[u8]) -> U256 {
+    U256::from_big_endian(data)
+}
+
+pub fn u256_hash(input: &[u8]) -> Vec<u8>{
+    let mut hasher = Sha3_256::default();
+    hasher.input(input);
+    hasher.result().to_vec()
 }
