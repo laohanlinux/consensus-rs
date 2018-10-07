@@ -13,4 +13,8 @@ exonum_sodiumoxide = "0.0.16"
 bigint = "*"
 hex = "*"
 sha3 = "0.7.3"
+rlp = "0.2.4"
+rmp = "*"
+rmp-serde  = "*"
+cryptocurrency-kit = {git = "https://github.com/laohanlinux/cryptocurrency-kit.git"}
 util_rs = {git = "https://github.com/laohanlinux/util-rs.git"}
