@@ -3,11 +3,11 @@ use cryptocurrency_kit::ethkey::Address;
 
 use std::cmp::{Ord, Ordering, PartialEq};
 
-trait Validator: ::std::fmt::Debug + ::std::fmt::Display {
+pub trait Validator: ::std::fmt::Debug + ::std::fmt::Display {
     fn address(&self) -> Address;
 }
 
-type Validators = Vec<Box<dyn Validator>>;
+pub type Validators = Vec<Box<dyn Validator>>;
 
 #[derive(Debug, Eq)]
 struct ImplValidator {
@@ -44,7 +44,7 @@ impl ::std::fmt::Display for ImplValidator {
     }
 }
 
-trait ValidatorSet: Clone {
+pub trait ValidatorSet: Clone {
     fn calc_proposer(last_proposer: Address, round: u64);
     fn size(&self) -> usize;
     fn list(&self) -> Vec<Box<dyn Validator>>;

@@ -1,15 +1,14 @@
-
-
-use cryptocurrency_kit::crypto::{CryptoHash, hash, Hash};
+use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::storage::values::StorageValue;
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
+
 use std::borrow::Cow;
 use std::io::Cursor;
-
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::cmp::Ordering;
 
 pub type Height = u64;
 
@@ -22,7 +21,7 @@ pub struct Request<T: Proposal + CryptoHash + StorageValue> {
     proposal: T,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, Deserialize, Serialize)]
 pub struct View {
     pub round: u64,
     pub height: Height,
@@ -43,6 +42,26 @@ impl Display for View {
     }
 }
 
+impl PartialEq for View {
+    fn eq(&self, other: &Self) -> bool {
+        self.height == other.height && self.round == other.round
+    }
+}
+
+impl PartialOrd for View {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let order = self.height.partial_cmp(&other.height);
+        match order {
+            Some(order) => match order{
+                Ordering::Equal => self.round.partial_cmp(&other.round),
+                _ => Some(order),
+            }
+            None => unreachable!()
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -51,9 +70,9 @@ mod test {
     #[test]
     fn test_view() {
         (0..10).for_each(|i| {
-            let view = View{
+            let view = View {
                 round: i as u64,
-                height: (i+1) as Height,
+                height: (i + 1) as Height,
             };
             writeln!(io::stdout(), "{}", view).unwrap();
             let expect_view = view.clone();
@@ -62,5 +81,60 @@ mod test {
             assert_eq!(got_view.height, expect_view.height);
             assert_eq!(got_view.round, expect_view.round);
         });
+    }
+
+    #[test]
+    fn test_cmp() {
+        {
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:1});
+            assert_eq!(a, b);
+
+            let (mut a, mut b) = (View{height:2, round:1}, View{height:1, round:1});
+            assert_ne!(a, b);
+
+            let (mut a, mut b) = (View{height:2, round:1}, View{height:2, round:2});
+            assert_ne!(a, b);
+        }
+
+        /// Greeter
+        {
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:0});
+            assert!(a > b);
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:0, round:10});
+            assert!(a > b);
+        }
+
+        /// Less
+        {
+            let (mut a, mut b) = (View{height:1, round:0}, View{height:1, round:1});
+            assert!(a < b);
+            let (mut a, mut b) = (View{height:0, round:12}, View{height:1, round:10});
+            assert!(a < b);
+        }
+
+
+        /// GreeterEq
+        {
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:1});
+            assert!(a>=b);
+            let (mut a, mut b) = (View{height:2, round:1}, View{height:1, round:1});
+            assert!(a>=b);
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:0});
+            assert!(a >= b);
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:0, round:10});
+            assert!(a >= b);
+        }
+
+        /// LessEq
+        {
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:1});
+            assert!(a<=b);
+            let (mut a, mut b) = (View{height:1, round:1}, View{height:2, round:1});
+            assert!(a<=b);
+            let (mut a, mut b) = (View{height:1, round:0}, View{height:1, round:1});
+            assert!(a <= b);
+            let (mut a, mut b) = (View{height:0, round:12}, View{height:1, round:10});
+            assert!(a <= b);
+        }
     }
 }
