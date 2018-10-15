@@ -1,4 +1,5 @@
 #![feature(custom_attribute)]
+#![feature(nll)]
 
 extern crate serde;
 #[macro_use]

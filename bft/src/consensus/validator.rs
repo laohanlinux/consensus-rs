@@ -8,7 +8,7 @@ pub trait Validator: ::std::fmt::Debug + ::std::fmt::Display {
     fn address(&self) -> Address;
 }
 
-pub type Validators = Vec<Box<dyn Validator>>;
+pub type Validators = Vec<Box<Validator>>;
 
 #[derive(Debug, Eq)]
 struct ImplValidator {
@@ -59,43 +59,34 @@ pub trait ValidatorSet: Clone {
     fn f() -> isize;
 }
 
-type ProposalSelector = Box<Fn()>;
+type ProposalSelector = fn(Height) -> Box<dyn Validator>;
 
 fn selectorFn() {}
 
-struct ImplValidatorSet<T: Validator>{
+struct ImplValidatorSet<T: Validator> {
     validators: Validators,
     proposer: T,
     selector: ProposalSelector,
 }
 
-
 impl<T: Validator> ImplValidatorSet<T> {
-//    fn new<T>(address: &[Address]) -> Self {
-//        let mut set = ImplValidatorSet{
-//            validators: Vec::new();
-//            proposer: Box::new(selectorFn),
-//        };
-//
-//        let mut validators:Vec<Address> = Vec::new();
-//        for x in address {
-//            validators.push(x.clone());
-//        }
-//
-//        // TODO sort address
-//
-//
-//    }
+    //    fn new<T>(address: &[Address]) -> Self {
+    //        let mut set = ImplValidatorSet{
+    //            validators: Vec::new();
+    //            proposer: Box::new(selectorFn),
+    //        };
+    //
+    //        let mut validators:Vec<Address> = Vec::new();
+    //        for x in address {
+    //            validators.push(x.clone());
+    //        }
+    //
+    //        // TODO sort address
+    //
+    //
+    //    }
 
     pub fn size(&self) -> usize {
         self.validators.len()
-    }
-
-    pub fn list(&self) -> Box<Validators> {
-        let mut validators = Vec::new();
-        for validator in self.validators {
-            validators.push(validator);
-        }
-        Box::new(validators)
     }
 }
