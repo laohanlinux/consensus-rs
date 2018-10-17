@@ -4,13 +4,13 @@ use cryptocurrency_kit::ethkey::Address;
 use super::types::Height;
 use std::cmp::{Ord, Ordering, PartialEq};
 
-pub trait Validator: ::std::fmt::Debug + ::std::fmt::Display {
+pub trait Validator: ::std::clone::Clone + ::std::fmt::Debug + ::std::fmt::Display {
     fn address(&self) -> Address;
 }
 
-pub type Validators = Vec<Box<Validator>>;
+pub type Validators<T: Validator> = Vec<T>;
 
-#[derive(Debug, Eq)]
+#[derive(Debug, Clone, Eq)]
 struct ImplValidator {
     address: Address,
 }
@@ -45,46 +45,49 @@ impl ::std::fmt::Display for ImplValidator {
     }
 }
 
-pub trait ValidatorSet: Clone {
-    fn calc_proposer(last_proposer: Address, round: u64);
+pub trait ValidatorSet<T: Validator>: Clone {
+    fn calc_proposer(&self, last_proposer: Address, round: u64);
     fn size(&self) -> usize;
-    fn list(&self) -> Vec<Box<Validator>>;
-    fn get_by_index<T: Validator>(&self) -> Option<T>;
-    fn get_by_address(&self, address: Address) -> Option<Box<Validator>>;
+    fn list(&self) -> Validators<T>;
+    fn get_by_index(&self) -> Option<T>;
+    fn get_by_address(&self, address: Address) -> Option<T>;
     // get current proposer
-    fn get_proposer(&self) -> &Validator;
+    fn get_proposer(&self) -> &T;
     fn is_proposer(&self, address: Address) -> bool;
     fn add_validator(&mut self, address: Address) -> bool;
     fn remove_validator(&mut self, address: Address) -> bool;
-    fn f() -> isize;
+    fn f(&self) -> isize;
 }
 
-type ProposalSelector = fn(Height) -> Box<dyn Validator>;
+type ProposalSelector<T> = fn(height: Height, vals: Validators<T>) -> T;
 
-fn selectorFn() {}
+fn selectorFn<T: Validator>(height: Height, vals: Validators<T>) -> T {
+    let idx = vals.len() % height as usize;
+    vals[idx].clone()
+}
 
 struct ImplValidatorSet<T: Validator> {
-    validators: Validators,
-    proposer: T,
-    selector: ProposalSelector,
+    validators: Validators<T>,
+    proposer: Option<T>,
+    selector: Box<ProposalSelector<T>>,
 }
 
 impl<T: Validator> ImplValidatorSet<T> {
-    //    fn new<T>(address: &[Address]) -> Self {
-    //        let mut set = ImplValidatorSet{
-    //            validators: Vec::new();
-    //            proposer: Box::new(selectorFn),
-    //        };
-    //
-    //        let mut validators:Vec<Address> = Vec::new();
-    //        for x in address {
-    //            validators.push(x.clone());
-    //        }
-    //
-    //        // TODO sort address
-    //
-    //
-    //    }
+    fn new(address: &[Address]) -> Self {
+        let mut set = ImplValidatorSet {
+            validators: Vec::new(),
+            proposer: None,
+            selector: Box::new(selectorFn),
+        };
+
+        let mut validators: Vec<Address> = Vec::new();
+        for x in address {
+            validators.push(x.clone());
+        }
+
+        set.validators = validators;
+        set
+    }
 
     pub fn size(&self) -> usize {
         self.validators.len()

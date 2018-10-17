@@ -1,5 +1,6 @@
 #![feature(custom_attribute)]
 #![feature(nll)]
+#![feature(dyn_trait)]
 
 extern crate serde;
 #[macro_use]
