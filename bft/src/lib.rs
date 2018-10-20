@@ -19,8 +19,14 @@ extern crate hex;
 extern crate sha3;
 extern crate rlp;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate ethereum_types;
+extern crate secp256k1;
+#[macro_use]
 extern crate cryptocurrency_kit;
 use std::thread;
 
 pub mod common;
 pub mod consensus;
+pub mod types;

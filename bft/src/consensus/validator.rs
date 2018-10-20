@@ -1,54 +1,11 @@
-use cryptocurrency_kit::common::to_hex;
-use cryptocurrency_kit::ethkey::Address;
-use cryptocurrency_kit::crypto::Hash;
 use bigint::U128;
+use cryptocurrency_kit::crypto::Hash;
+use cryptocurrency_kit::ethkey::Address;
 
 use super::types::Height;
-
-use std::clone::Clone;
-use std::cmp::{Ord, Ordering, PartialEq};
-use std::fmt::{Debug, Display};
+use ::types::Validator;
 
 pub type Validators = Vec<Validator>;
-
-#[derive(Debug, Clone, Eq)]
-pub struct Validator {
-    address: Address,
-}
-
-impl Ord for Validator {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.address.cmp(&other.address)
-    }
-}
-
-impl PartialOrd for Validator {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Validator {
-    fn eq(&self, other: &Self) -> bool {
-        self.address == other.address
-    }
-}
-
-impl Display for Validator {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "{}", to_hex(self.address))
-    }
-}
-
-impl Validator {
-    pub fn address(&self) -> Address {
-        self.address
-    }
-
-    pub fn new(address: Address) -> Self {
-        Validator { address }
-    }
-}
 
 pub trait ValidatorSet {
     fn calc_proposer(&mut self, prex_blh: &Hash, height: Height, round: u64);
@@ -61,7 +18,8 @@ pub trait ValidatorSet {
     fn is_proposer(&self, address: Address) -> bool;
     fn add_validator(&mut self, address: Address) -> bool;
     fn remove_validator(&mut self, address: Address) -> bool;
-    fn f(&self) -> isize;
+    fn two_thirds_majority(&self) -> usize;
+    fn has_two_thirds_majority(&self, n: usize) -> bool;
 }
 
 // blh: parent block hash
@@ -69,9 +27,9 @@ pub trait ValidatorSet {
 // round: current round
 // vals: current validator's set
 /// TODO Opitz
-type ProposalSelector = fn(blh: & Hash, height: Height, round: u64, vals: & Validators) -> Validator;
+type ProposalSelector = fn(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator;
 
-fn fn_selector(blh: & Hash, height: Height, round: u64, vals: & Validators) -> Validator {
+fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator {
     assert!(vals.len() > 0);
     let seed = (randon_seed(blh, height, vals) + round) % vals.len() as u64;
     vals[seed as usize].clone()
@@ -106,7 +64,7 @@ impl ImplValidatorSet {
         for x in address {
             set.validators.push(Validator::new(x.clone()));
         }
-        set.validators.sort_by_key(|k| k.address);
+        set.validators.sort_by_key(|k| *k.address());
         set
     }
 }
@@ -133,7 +91,7 @@ impl ValidatorSet for ImplValidatorSet {
     fn get_by_address(&self, address: Address) -> Option<&Validator> {
         let mut idx = 0;
         let ok = self.validators.iter().any(|validator| {
-            if validator.address == address {
+            if *validator.address() == address {
                 return true;
             }
             idx += 1;
@@ -155,7 +113,7 @@ impl ValidatorSet for ImplValidatorSet {
         }
         match self.proposer {
             None => false,
-            Some(ref proposer) => proposer.address == address,
+            Some(ref proposer) => *proposer.address() == address,
         }
     }
 
@@ -163,12 +121,12 @@ impl ValidatorSet for ImplValidatorSet {
         if self
             .validators
             .iter()
-            .any(|validator| validator.address == address)
+            .any(|validator| *validator.address() == address)
         {
             return false;
         }
         self.validators.push(Validator::new(address));
-        self.validators.sort_by_key(|validator| validator.address);
+        self.validators.sort_by_key(|validator| *validator.address());
         true
     }
 
@@ -180,8 +138,14 @@ impl ValidatorSet for ImplValidatorSet {
     }
 
     // TODO
-    fn f(&self) -> isize {
-        0
+    fn two_thirds_majority(&self) -> usize {
+        let vals_size = self.validators.len() as f32;
+        let ceil = vals_size * 2.0 / 3.0;
+        ceil.ceil() as usize
+    }
+
+    fn has_two_thirds_majority(&self, n: usize) -> bool {
+        n >= self.two_thirds_majority()
     }
 }
 
@@ -212,7 +176,7 @@ mod tests {
 
         let val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
         val_set.validators.iter().fold(0, |acc, x| {
-            assert_eq!(x.address, expect_address_list[acc]);
+            assert_eq!(*x.address(), expect_address_list[acc]);
             acc + 1
         });
 
@@ -220,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn tets_validator_set() {
+    fn test_validator_set() {
         let mut address_list = vec![
             Address::from(100),
             Address::from(10),
@@ -229,29 +193,117 @@ mod tests {
             Address::from(3),
         ];
         let mut val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
+
+        /// size
+        assert_eq!(address_list.len(), val_set.size());
+
+        /// list and get_by_address
         {
-            (0..address_list.len() * 3).for_each(|round|{
-                val_set.calc_proposer(&Hash::zero(), 0, round as u64);
-                writeln!(io::stdout(), "round:{}, proposer: {}", round, val_set.proposer.as_ref().unwrap()).unwrap();
-            })
+            let address_list = val_set.list();
+            address_list.iter().for_each(|validator| {
+                assert!(val_set.get_by_address(*validator.address()).is_some());
+            });
         }
 
+        /// get_by_index
+        (0..val_set.size()).for_each(|idx| {
+            assert!(val_set.get_by_index(idx).is_some());
+        });
+
+        /// get_proposer(&self)
+        {
+            assert!(val_set.get_proposer().is_none());
+            val_set.calc_proposer(&Hash::zero(), 0, 0);
+            assert!(val_set.get_proposer().is_some());
+        }
+
+        // is_proposer(&self, address: Address) -> bool;
+        {
+            let proposer = val_set.get_proposer().unwrap();
+            assert!(val_set.is_proposer(*proposer.address()));
+        }
+
+        /// add new validator
+        {
+            let new_address = Address::from(random::<u64>());
+            assert!(val_set.add_validator(new_address));
+            assert!(val_set.get_by_address(new_address).is_some());
+            // readd same proposer
+            assert!(val_set.add_validator(new_address) == false);
+        }
+
+        /// remove a validator
+        {
+            let remove_validator = Validator::new(address_list[0]);
+            assert!(val_set.remove_validator(*remove_validator.address()));
+            // remove again same validator
+            assert!(val_set.remove_validator(*remove_validator.address()) == false);
+        }
+
+        // calc_proposer
+        {
+            (0..address_list.len() * 3).for_each(|round| {
+                val_set.calc_proposer(&Hash::zero(), 0, round as u64);
+                writeln!(
+                    io::stdout(),
+                    "round:{}, proposer: {}",
+                    round,
+                    val_set.proposer.as_ref().unwrap()
+                )
+                .unwrap();
+            })
+        }
         writeln!(io::stdout(), "========================").unwrap();
         {
             let mut random_hash = || {
                 let mut hash = [0; HASH_SIZE];
-                (0..HASH_SIZE).for_each(|bit|{
+                (0..HASH_SIZE).for_each(|bit| {
                     let x: u8 = random();
                     hash[bit] = x;
                 });
                 Hash::new(hash.as_ref())
             };
 
-            (0 ..address_list.len() * 3).for_each(|_|{
+            (0..address_list.len() * 3).for_each(|_| {
                 let hash = random_hash();
-                val_set.calc_proposer( &hash, 0, 0);
-                writeln!(io::stdout(), "round:{}, proposer: {}", 0, val_set.proposer.as_ref().unwrap()).unwrap();
+                val_set.calc_proposer(&hash, 0, 0);
+                writeln!(
+                    io::stdout(),
+                    "round:{}, proposer: {}",
+                    0,
+                    val_set.proposer.as_ref().unwrap()
+                )
+                .unwrap();
             })
+        }
+    }
+
+    #[test]
+    fn test_validator_set_two_third() {
+        /// more than 3 validators
+        {
+            let mut address_list = vec![
+                Address::from(100),
+                Address::from(10),
+                Address::from(21),
+                Address::from(31),
+                Address::from(3),
+            ];
+            let mut val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
+            assert_eq!(val_set.two_thirds_majority(), 4);
+            assert!(val_set.has_two_thirds_majority(4));
+            assert!(!val_set.has_two_thirds_majority(3));
+            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority());
+        }
+
+        /// equal 3 validators
+        {
+            let mut address_list = vec![Address::from(100), Address::from(10), Address::from(3)];
+            let mut val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
+            assert_eq!(val_set.two_thirds_majority(), 3);
+            assert!(val_set.has_two_thirds_majority(4));
+            assert!(!val_set.has_two_thirds_majority(2));
+            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority());
         }
     }
 }

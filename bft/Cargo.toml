@@ -17,5 +17,8 @@ sha3 = "0.7.3"
 rlp = "0.2.4"
 rmp = "*"
 rmp-serde  = "*"
+lazy_static = "1.1.0"
+ethereum-types = "*"
+eth-secp256k1 = { git = "https://github.com/paritytech/rust-secp256k1" }
 cryptocurrency-kit = {git = "https://github.com/laohanlinux/cryptocurrency-kit.git"}
 util_rs = {git = "https://github.com/laohanlinux/util-rs.git"}
