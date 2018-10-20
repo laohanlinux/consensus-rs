@@ -13,6 +13,7 @@ extern crate rmp_serde as rmps;
 extern crate runtime_fmt;
 
 extern crate bigint;
+extern crate rand;
 extern crate chrono;
 extern crate hex;
 extern crate sha3;

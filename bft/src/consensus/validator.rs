@@ -1,5 +1,7 @@
 use cryptocurrency_kit::common::to_hex;
 use cryptocurrency_kit::ethkey::Address;
+use cryptocurrency_kit::crypto::Hash;
+use bigint::U128;
 
 use super::types::Height;
 
@@ -49,7 +51,7 @@ impl Validator {
 }
 
 pub trait ValidatorSet {
-    fn calc_proposer(&mut self, last_proposer: Address, round: u64);
+    fn calc_proposer(&mut self, prex_blh: &Hash, height: Height, round: u64);
     fn size(&self) -> usize;
     fn list(&self) -> Validators;
     fn get_by_index(&self, index: usize) -> Option<&Validator>;
@@ -62,11 +64,28 @@ pub trait ValidatorSet {
     fn f(&self) -> isize;
 }
 
-type ProposalSelector = fn(height: Height, vals: Validators) -> Validator;
+// blh: parent block hash
+// height: current height
+// round: current round
+// vals: current validator's set
+/// TODO Opitz
+type ProposalSelector = fn(blh: & Hash, height: Height, round: u64, vals: & Validators) -> Validator;
 
-fn fn_selector(height: Height, vals: Validators) -> Validator {
-    let idx = vals.len() % height as usize;
-    vals[idx].clone()
+fn fn_selector(blh: & Hash, height: Height, round: u64, vals: & Validators) -> Validator {
+    assert!(vals.len() > 0);
+    let seed = (randon_seed(blh, height, vals) + round) % vals.len() as u64;
+    vals[seed as usize].clone()
+}
+
+fn randon_seed(blh: &Hash, height: Height, vals: &Validators) -> u64 {
+    let blh = blh.as_ref();
+    let mut seed_buf = [0; 16];
+    for (idx, item) in seed_buf[..8].iter_mut().enumerate() {
+        *item = blh[idx];
+    }
+
+    let block_seed: U128 = U128::from(seed_buf);
+    (block_seed % U128::from(vals.len())).as_u64()
 }
 
 #[derive(Clone)]
@@ -77,11 +96,11 @@ pub struct ImplValidatorSet {
 }
 
 impl ImplValidatorSet {
-    pub fn new(address: &[Address]) -> ImplValidatorSet {
+    pub fn new(address: &[Address], selector: Box<ProposalSelector>) -> ImplValidatorSet {
         let mut set = ImplValidatorSet {
             validators: Vec::new(),
             proposer: None,
-            selector: Box::new(fn_selector),
+            selector,
         };
 
         for x in address {
@@ -93,24 +112,9 @@ impl ImplValidatorSet {
 }
 
 impl ValidatorSet for ImplValidatorSet {
-    fn calc_proposer(&mut self, last_proposer: Address, round: u64) {
-        let mut idx = 0;
-        let ok = self.validators.iter().any(|validator| {
-            if validator.address == last_proposer {
-                return true;
-            }
-            idx += 1;
-            false
-        });
-        assert!(ok);
-
-        let next_proposer_local = (idx + round) as usize % self.validators.len();
-        match self.validators.get(next_proposer_local) {
-            None => unreachable!(),
-            Some(validator) => {
-                self.proposer = Some(validator.clone());
-            }
-        }
+    fn calc_proposer(&mut self, pre_blh: &Hash, height: Height, round: u64) {
+        let next_proposer = (self.selector)(pre_blh, height, round, &self.validators);
+        self.proposer = Some(next_proposer);
     }
 
     fn size(&self) -> usize {
@@ -184,6 +188,8 @@ impl ValidatorSet for ImplValidatorSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cryptocurrency_kit::crypto::HASH_SIZE;
+    use rand::prelude::*;
 
     use std::io::{self, Write};
 
@@ -204,7 +210,7 @@ mod tests {
             Address::from(100),
         ];
 
-        let val_set = ImplValidatorSet::new(&address_list);
+        let val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
         val_set.validators.iter().fold(0, |acc, x| {
             assert_eq!(x.address, expect_address_list[acc]);
             acc + 1
@@ -222,6 +228,30 @@ mod tests {
             Address::from(31),
             Address::from(3),
         ];
-        let val_set = ImplValidatorSet::new(&address_list);
+        let mut val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
+        {
+            (0..address_list.len() * 3).for_each(|round|{
+                val_set.calc_proposer(&Hash::zero(), 0, round as u64);
+                writeln!(io::stdout(), "round:{}, proposer: {}", round, val_set.proposer.as_ref().unwrap()).unwrap();
+            })
+        }
+
+        writeln!(io::stdout(), "========================").unwrap();
+        {
+            let mut random_hash = || {
+                let mut hash = [0; HASH_SIZE];
+                (0..HASH_SIZE).for_each(|bit|{
+                    let x: u8 = random();
+                    hash[bit] = x;
+                });
+                Hash::new(hash.as_ref())
+            };
+
+            (0 ..address_list.len() * 3).for_each(|_|{
+                let hash = random_hash();
+                val_set.calc_proposer( &hash, 0, 0);
+                writeln!(io::stdout(), "round:{}, proposer: {}", 0, val_set.proposer.as_ref().unwrap()).unwrap();
+            })
+        }
     }
 }
