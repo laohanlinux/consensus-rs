@@ -25,7 +25,7 @@ extern crate ethereum_types;
 extern crate secp256k1;
 #[macro_use]
 extern crate cryptocurrency_kit;
-use std::thread;
+extern crate lru_time_cache;
 
 pub mod common;
 pub mod consensus;

@@ -1,7 +1,11 @@
-use cryptocurrency_kit::crypto::Hash;
-use cryptocurrency_kit::ethkey::crypto::sign;
-use cryptocurrency_kit::ethkey::{Address, KeyPair, Public, Secret, Message, Signature, sign, verify_address};
+use lru_time_cache::LruCache;
 
+use cryptocurrency_kit::crypto::hash;
+use cryptocurrency_kit::crypto::Hash;
+use cryptocurrency_kit::ethkey::keccak::Keccak256;
+use cryptocurrency_kit::ethkey::{
+    sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
+};
 use std::time::Duration;
 
 use super::types::{Height, Proposal};
@@ -13,19 +17,19 @@ pub trait Backend {
     fn address(&self) -> Address;
     /// validators returns a set of current validator
     fn validators(&self) -> &ValidatorSet;
-    //    /// TODO
+    ///TODO
     fn event_mux(&self);
-    //    /// broadcast sends a message to all validators (include itself)
+    /// broadcast sends a message to all validators (include itself)
     fn broadcast(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
-    //    /// gossip sends a message to all validators (exclude self)
+    /// gossip sends a message to all validators (exclude self)
     fn gossip(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
-    //    /// commit a proposal with seals
+    /// commit a proposal with seals
     fn commit(&mut self, proposal: &Proposal, seals: &[&[u8]]) -> Result<(), ()>;
-    //    /// verifies the proposal. If a err_future_block error is returned,
-    //    /// the time difference of the proposal and current time is also returned.
+    /// verifies the proposal. If a err_future_block error is returned,
+    /// the time difference of the proposal and current time is also returned.
     fn verify(&self, proposal: &Proposal) -> Result<Duration, ()>;
     fn sign(&self, digest: &[u8]) -> Result<Vec<u8>, ()>;
-    fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<(), ()>;
+    fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<bool, ()>;
 
     fn last_proposal(&self) -> Result<&Proposal, ()>;
     fn has_proposal(&self, hash: &Hash, height: &Height) -> bool;
@@ -38,6 +42,8 @@ struct ImplBackend<T: ValidatorSet> {
     validaor: Validator,
     validator_set: T,
     key_pair: KeyPair,
+    inbound_cache: LruCache<Hash, String>,
+    outbound_cache: LruCache<Hash, String>,
 }
 
 impl<T> Backend for ImplBackend<T>
@@ -79,16 +85,16 @@ where
     fn sign(&self, digest: &[u8]) -> Result<Vec<u8>, ()> {
         let message = Message::from(digest);
         match sign(&self.key_pair.secret(), &message) {
-            Ok(signature) => {
-                Ok(signature.to_vec())
-            },
+            Ok(signature) => Ok(signature.to_vec()),
             Err(_) => Err(()),
         }
     }
 
     /// TODO
-    fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<(), ()> {
-        Err(())
+    fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<bool, ()> {
+        let keccak_hash = hash(data);
+        let signature = Signature::from_slice(sig);
+        verify_address(&address, &signature, &Message::from(keccak_hash.as_ref())).map_err(|_| ())
     }
 
     /// TODO
@@ -100,6 +106,7 @@ where
     fn has_proposal(&self, hash: &Hash, height: &Height) -> bool {
         false
     }
+
     /// TODO
     fn get_proposer(&self, height: Height) -> Address {
         Address::from(0)
@@ -115,3 +122,5 @@ where
         false
     }
 }
+
+impl<T> ImplBackend<T> where T: ValidatorSet {}
