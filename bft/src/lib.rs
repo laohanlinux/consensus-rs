@@ -1,6 +1,5 @@
 #![feature(custom_attribute)]
 #![feature(nll)]
-#![feature(dyn_trait)]
 #![feature(vec_remove_item)]
 
 extern crate serde;
