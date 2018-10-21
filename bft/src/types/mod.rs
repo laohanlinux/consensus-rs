@@ -5,11 +5,20 @@ use std::clone::Clone;
 use std::cmp::{Ord, Ordering, PartialEq};
 use std::fmt::Display;
 
+pub mod transaction;
+pub mod block;
+
 lazy_static! {
     pub static ref EMPTY_ADDRESS: Address = {
         Address::from(0)
     };
 }
+
+pub type Height = u64;
+pub type Timestamp = u64;
+pub type Bloom = u64;
+pub type Difficulty = u64;
+pub type Gas = u64;
 
 #[derive(Debug, Clone, Eq)]
 pub struct Validator {

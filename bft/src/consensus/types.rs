@@ -4,11 +4,11 @@ use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 
-use std::borrow::Cow;
-use std::io::Cursor;
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::io::Cursor;
 
 pub type Height = u64;
 
@@ -52,15 +52,14 @@ impl PartialOrd for View {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let order = self.height.partial_cmp(&other.height);
         match order {
-            Some(order) => match order{
+            Some(order) => match order {
                 Ordering::Equal => self.round.partial_cmp(&other.round),
                 _ => Some(order),
-            }
-            None => unreachable!()
+            },
+            None => unreachable!(),
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -86,54 +85,188 @@ mod test {
     #[test]
     fn test_cmp() {
         {
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:1});
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 1,
+                    round: 1,
+                },
+            );
             assert_eq!(a, b);
 
-            let (mut a, mut b) = (View{height:2, round:1}, View{height:1, round:1});
+            let (mut a, mut b) = (
+                View {
+                    height: 2,
+                    round: 1,
+                },
+                View {
+                    height: 1,
+                    round: 1,
+                },
+            );
             assert_ne!(a, b);
 
-            let (mut a, mut b) = (View{height:2, round:1}, View{height:2, round:2});
+            let (mut a, mut b) = (
+                View {
+                    height: 2,
+                    round: 1,
+                },
+                View {
+                    height: 2,
+                    round: 2,
+                },
+            );
             assert_ne!(a, b);
         }
 
         /// Greeter
         {
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:0});
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 1,
+                    round: 0,
+                },
+            );
             assert!(a > b);
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:0, round:10});
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 0,
+                    round: 10,
+                },
+            );
             assert!(a > b);
         }
 
         /// Less
         {
-            let (mut a, mut b) = (View{height:1, round:0}, View{height:1, round:1});
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 0,
+                },
+                View {
+                    height: 1,
+                    round: 1,
+                },
+            );
             assert!(a < b);
-            let (mut a, mut b) = (View{height:0, round:12}, View{height:1, round:10});
+            let (mut a, mut b) = (
+                View {
+                    height: 0,
+                    round: 12,
+                },
+                View {
+                    height: 1,
+                    round: 10,
+                },
+            );
             assert!(a < b);
         }
 
-
         /// GreeterEq
         {
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:1});
-            assert!(a>=b);
-            let (mut a, mut b) = (View{height:2, round:1}, View{height:1, round:1});
-            assert!(a>=b);
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:0});
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 1,
+                    round: 1,
+                },
+            );
             assert!(a >= b);
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:0, round:10});
+            let (mut a, mut b) = (
+                View {
+                    height: 2,
+                    round: 1,
+                },
+                View {
+                    height: 1,
+                    round: 1,
+                },
+            );
+            assert!(a >= b);
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 1,
+                    round: 0,
+                },
+            );
+            assert!(a >= b);
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 0,
+                    round: 10,
+                },
+            );
             assert!(a >= b);
         }
 
         /// LessEq
         {
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:1, round:1});
-            assert!(a<=b);
-            let (mut a, mut b) = (View{height:1, round:1}, View{height:2, round:1});
-            assert!(a<=b);
-            let (mut a, mut b) = (View{height:1, round:0}, View{height:1, round:1});
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 1,
+                    round: 1,
+                },
+            );
             assert!(a <= b);
-            let (mut a, mut b) = (View{height:0, round:12}, View{height:1, round:10});
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 1,
+                },
+                View {
+                    height: 2,
+                    round: 1,
+                },
+            );
+            assert!(a <= b);
+            let (mut a, mut b) = (
+                View {
+                    height: 1,
+                    round: 0,
+                },
+                View {
+                    height: 1,
+                    round: 1,
+                },
+            );
+            assert!(a <= b);
+            let (mut a, mut b) = (
+                View {
+                    height: 0,
+                    round: 12,
+                },
+                View {
+                    height: 1,
+                    round: 10,
+                },
+            );
             assert!(a <= b);
         }
     }

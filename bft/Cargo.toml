@@ -21,5 +21,5 @@ lazy_static = "1.1.0"
 ethereum-types = "*"
 lru_time_cache = "0.8.0"
 eth-secp256k1 = { git = "https://github.com/paritytech/rust-secp256k1" }
-cryptocurrency-kit = {git = "https://github.com/laohanlinux/cryptocurrency-kit.git"}
+cryptocurrency-kit = {git = "https://github.com/laohanlinux/cryptocurrency-kit-rs.git"}
 util_rs = {git = "https://github.com/laohanlinux/util-rs.git"}
