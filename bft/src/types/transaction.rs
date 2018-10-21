@@ -55,10 +55,6 @@ impl Transaction {
         }
     }
 
-    /// TODO
-    pub fn chain_id(&self) -> u64 {
-        0
-    }
     pub fn payload(&self) -> &[u8] {
         &self.payload
     }

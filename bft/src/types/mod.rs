@@ -7,6 +7,7 @@ use std::fmt::Display;
 
 pub mod transaction;
 pub mod block;
+pub mod votes;
 
 lazy_static! {
     pub static ref EMPTY_ADDRESS: Address = {

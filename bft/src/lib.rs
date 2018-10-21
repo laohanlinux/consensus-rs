@@ -30,3 +30,4 @@ extern crate lru_time_cache;
 pub mod common;
 pub mod consensus;
 pub mod types;
+pub mod store;
