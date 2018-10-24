@@ -26,6 +26,7 @@ extern crate secp256k1;
 #[macro_use]
 extern crate cryptocurrency_kit;
 extern crate lru_time_cache;
+extern crate kvdb_rocksdb;
 
 pub mod common;
 pub mod consensus;
