@@ -1,3 +1,0 @@
-[submodule "bft/parity-common"]
-	path = bft/parity-common
-	url = https://github.com/laohanlinux/parity-common.git
