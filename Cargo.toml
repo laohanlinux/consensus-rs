@@ -5,4 +5,4 @@ authors = ["Rg <daimaldd@gmail.com>"]
 
 [dependencies]
 
-dpos = {path = "./dpos"}
+dpos = {version = "0.1", path = "./dpos"}
