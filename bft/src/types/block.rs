@@ -62,6 +62,23 @@ impl Header {
             extra,
         }
     }
+
+    pub fn zero_header() -> Header {
+        Header {
+            prev_hash: Hash::zero(),
+            proposer: Address::from(0),
+            root: Hash::zero(),
+            tx_hash: Hash::zero(),
+            receipt_hash: Hash::zero(),
+            bloom: 0,
+            difficulty: 0,
+            height: 0,
+            gas_limit: 0,
+            gas_used: 0,
+            time: 0,
+            extra: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

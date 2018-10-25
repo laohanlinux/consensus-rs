@@ -24,3 +24,4 @@ lru_time_cache = "0.8.0"
 eth-secp256k1 = { git = "https://github.com/paritytech/rust-secp256k1" }
 cryptocurrency-kit = {git = "https://github.com/laohanlinux/cryptocurrency-kit-rs.git"}
 kvdb-rocksdb = {path = "./parity-common/kvdb-rocksdb"}
+kvdb = {path = "./parity-common/kvdb"}

@@ -3,11 +3,14 @@ use super::Gas;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::signature::*;
 use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
+use cryptocurrency_kit::storage::values::StorageValue;
+use cryptocurrency_kit::storage::keys::StorageKey;
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
+use std::borrow::Cow;
 use std::io::Cursor;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,6 +36,8 @@ impl CryptoHash for Transaction {
         hash(self.hash_payload())
     }
 }
+
+implement_storagevalue_traits!{Transaction}
 
 impl Transaction {
     pub fn new(

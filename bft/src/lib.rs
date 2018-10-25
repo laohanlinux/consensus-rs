@@ -27,8 +27,10 @@ extern crate secp256k1;
 extern crate cryptocurrency_kit;
 extern crate lru_time_cache;
 extern crate kvdb_rocksdb;
+extern crate kvdb;
 
 pub mod common;
 pub mod consensus;
 pub mod types;
 pub mod store;
+pub mod core;
