@@ -1,2 +1,2 @@
 # consensue
-learn some blockchain consensus
+implement multiple  blockchain consensus
