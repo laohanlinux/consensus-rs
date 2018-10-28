@@ -1,7 +1,9 @@
 use sha3::{Sha3_256, Digest};
 use bigint::U256;
+use rand::random;
 
 use std::fmt::{self, Display};
+use std::env;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HexBytes {
@@ -34,4 +36,8 @@ pub fn u256_hash(input: &[u8]) -> Vec<u8>{
     let mut hasher = Sha3_256::default();
     hasher.input(input);
     hasher.result().to_vec()
+}
+
+pub fn random_dir() -> Box<String> {
+    Box::new(format!("{}{}", env::temp_dir().to_str().unwrap(), random::<u64>()))
 }
