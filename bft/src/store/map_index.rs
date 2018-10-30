@@ -42,7 +42,7 @@ where
     K: StorageKey,
     V: StorageValue,
 {
-    pub fn new<S: AsRef<str>>(index_name: S, view: Database) -> Self {
+    pub fn new<S: AsRef<str>>(index_name: S, view: &'static Database) -> Self {
         Self {
             base: BaseIndex::new(index_name, IndexType::Map, view),
             _k: PhantomData,
@@ -128,8 +128,8 @@ mod tests {
     fn str_key() {
         let db = Database::open_default(&random_dir()).unwrap();
         const KEY: &str = "key_1";
-
-        let mut index: MapIndex<String, _> = MapIndex::new(IDX_NAME, db);
+        db.borrow()
+        let mut index: MapIndex<String, _> = MapIndex::new(IDX_NAME, &db);
         assert_eq!(false, index.contains(KEY));
         index.put(&KEY.to_owned(), 0);
         assert_eq!(true, index.contains(KEY));
@@ -140,7 +140,7 @@ mod tests {
         let db = Database::open_default(&random_dir()).unwrap();
 
         {
-            let mut index: MapIndex<String, _> = MapIndex::new(IDX_NAME, db);
+            let mut index: MapIndex<String, _> = MapIndex::new(IDX_NAME, &db);
 
             (0..100).for_each(|idx|{
                 index.put(&format!("{}", idx), idx+1);
