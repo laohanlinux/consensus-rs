@@ -86,7 +86,7 @@ impl Transaction {
     }
 
     /// TODO
-    pub fn sign(&mut self, chain_id: &u64, secret: &Secret) {
+    pub fn sign(&mut self, chain_id: u64, secret: &Secret) {
         let signature = sign_bytes(secret, &TransactionSignature::packet_signature(&self));
         self.signature = Some(signature.unwrap());
     }
@@ -165,7 +165,7 @@ mod tests {
     fn transaction_sign() {
         let keypair = Random.generate().unwrap();
         let mut tx = Transaction::new(10, Address::from(100), 89, 10, 90, vec![10, 39, 76, 31]);
-        tx.sign(&100, keypair.secret());
+        tx.sign(100, keypair.secret());
         let hash = tx.hash();
         writeln!(io::stdout(), "hash: {:?}", hash).unwrap();
         writeln!(io::stdout(), "{}", tx.pretty_json()).unwrap();

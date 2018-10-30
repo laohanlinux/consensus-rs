@@ -1,10 +1,11 @@
 use std::io::Cursor;
+use std::sync::Arc;
 use std::{borrow::Cow, marker::PhantomData};
 
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::storage::keys::StorageKey;
 use cryptocurrency_kit::storage::values::StorageValue;
-use kvdb::{DBValue, DBTransaction};
+use kvdb::{DBTransaction, DBValue};
 use kvdb_rocksdb::{Database, DatabaseIterator};
 
 use rmps::decode::Error;
@@ -56,9 +57,8 @@ pub struct BaseIndex {
     name: String,
     index_id: Option<Vec<u8>>,
     index_type: IndexType,
-    view: Box<&'static Database>,
+    view: Arc<Database>,
 }
-
 
 pub struct BaseIndexIter<'a, K, V> {
     base_iter: Iter<'a>,
@@ -69,26 +69,26 @@ pub struct BaseIndexIter<'a, K, V> {
     _v: PhantomData<V>,
 }
 
-
 impl BaseIndex {
-    pub fn new<S: AsRef<str>>(index_name: S, index_type: IndexType, view: &'static Database) -> Self {
+    pub fn new<S: AsRef<str>>(index_name: S, index_type: IndexType, view: Arc<Database>) -> Self {
         Self {
             name: index_name.as_ref().to_string(),
             index_id: None,
             index_type,
-            view: Box::new(view),
+            view,
         }
     }
 
     // Opz
     fn prefix_key<K: StorageKey + ?Sized>(&self, key: &K) -> Vec<u8> {
-        let index_len = self.index_id.as_ref().map_or(0, |item|item.len());
+        let index_len = self.index_id.as_ref().map_or(0, |item| item.len());
         let name_len = self.name.len();
         let mut prefix_key = vec![0; name_len + index_len + key.size()];
         prefix_key[..name_len].copy_from_slice(self.name.as_bytes());
 
         if let Some(ref prefix) = self.index_id {
-            prefix_key[name_len..index_len].copy_from_slice(&self.index_id.as_ref().map_or(&vec![], |item| item));
+            prefix_key[name_len..index_len]
+                .copy_from_slice(&self.index_id.as_ref().map_or(&vec![], |item| item));
         }
 
         key.write(&mut prefix_key[name_len + index_len..]);
@@ -100,9 +100,9 @@ impl BaseIndex {
     }
 
     pub fn get<K, V>(&self, key: &K) -> Option<V>
-        where
-            K: StorageKey + ?Sized,
-            V: StorageValue,
+    where
+        K: StorageKey + ?Sized,
+        V: StorageValue,
     {
         let key = self.prefix_key(key);
         if let Some(value) = self.view.get(COL, &key).unwrap() {
@@ -112,20 +112,19 @@ impl BaseIndex {
     }
 
     pub fn contains<K>(&self, key: &K) -> bool
-        where
-            K: StorageKey + ?Sized,
+    where
+        K: StorageKey + ?Sized,
     {
-
         self.view.get(COL, &self.prefix_key(key)).unwrap().is_some()
     }
 
     pub fn iter<P, K, V>(&self, subprefix: &P) -> BaseIndexIter<K, V>
-        where
-            P: StorageKey,
-            K: StorageKey,
-            V: StorageValue,
+    where
+        P: StorageKey,
+        K: StorageKey,
+        V: StorageValue,
     {
-        let iter_prefix =  self.prefix_key(subprefix);
+        let iter_prefix = self.prefix_key(subprefix);
         BaseIndexIter {
             base_iter: self.view.iter_from_prefix(COL, &iter_prefix).unwrap(),
             base_prefix_len: self.name.len() + self.index_id.as_ref().map_or(0, |p| p.len()),
@@ -136,27 +135,26 @@ impl BaseIndex {
         }
     }
 
-//    pub fn iter_from<P, F, K, V>(&self, subprefix:&P, from:&F) -> BaseIndexIter<K, V>
-//    where
-//        P: StorageKey,
-//        F: StorageKey + ?Sized,
-//        K: StorageKey,
-//        V: StorageValue,
-//    {
-//        let iter_prefix = self.prefix_key(subprefix);
-//        let iter_from = self.prefix_key(from);
-//        BaseIndexIter {
-//            base_iter: self.view.iter_from_prefix(COL, )
-//        }
-//    }
-
+    //    pub fn iter_from<P, F, K, V>(&self, subprefix:&P, from:&F) -> BaseIndexIter<K, V>
+    //    where
+    //        P: StorageKey,
+    //        F: StorageKey + ?Sized,
+    //        K: StorageKey,
+    //        V: StorageValue,
+    //    {
+    //        let iter_prefix = self.prefix_key(subprefix);
+    //        let iter_from = self.prefix_key(from);
+    //        BaseIndexIter {
+    //            base_iter: self.view.iter_from_prefix(COL, )
+    //        }
+    //    }
 
     /////////////////////////////
     pub fn fork(&mut self) -> &Database {
         &self.view
     }
 
-    pub fn transaction(&self) -> DBTransaction{
+    pub fn transaction(&self) -> DBTransaction {
         self.view.transaction()
     }
 
@@ -166,9 +164,9 @@ impl BaseIndex {
     }
 
     pub fn put<K, V>(&mut self, key: &K, value: V)
-        where
-            K: StorageKey,
-            V: StorageValue,
+    where
+        K: StorageKey,
+        V: StorageValue,
     {
         let key = self.prefix_key(key);
         let mut tx = self.view.transaction();
@@ -178,8 +176,8 @@ impl BaseIndex {
     }
 
     pub fn remove<K>(&mut self, key: &K)
-        where
-            K: StorageKey + ?Sized,
+    where
+        K: StorageKey + ?Sized,
     {
         let key = self.prefix_key(key);
         let mut tx = self.view.transaction();
@@ -201,9 +199,9 @@ impl BaseIndex {
 }
 
 impl<'a, K, V> Iterator for BaseIndexIter<'a, K, V>
-    where
-        K: StorageKey,
-        V: StorageValue,
+where
+    K: StorageKey,
+    V: StorageValue,
 {
     type Item = (K::Owned, V);
 
@@ -213,10 +211,10 @@ impl<'a, K, V> Iterator for BaseIndexIter<'a, K, V>
         }
         if let Some((k, v)) = self.base_iter.next() {
             if k.starts_with(&self.index_id) {
-                return Some ((
-                        K::read(&k[self.base_prefix_len..]),
-                        V::from_bytes(Cow::Borrowed(&v)),
-                    ));
+                return Some((
+                    K::read(&k[self.base_prefix_len..]),
+                    V::from_bytes(Cow::Borrowed(&v)),
+                ));
             }
         }
         self.ended = true;
@@ -232,7 +230,7 @@ pub struct BaseIndexBar<T> {
 }
 
 pub struct BaseIndexIterBar<'a, K, V> {
-    base_iter: Box<Iterator<Item=(Box<[u8]>, Box<[u8]>)> + 'a>,
+    base_iter: Box<Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a>,
     base_prefix_len: usize,
     index_id: Vec<u8>,
     ended: bool,
@@ -240,129 +238,31 @@ pub struct BaseIndexIterBar<'a, K, V> {
     _v: PhantomData<V>,
 }
 
-use kvdb::KeyValueDB;
-//
-//impl<T> BaseIndexBar<T>
-//    where T: AsRef<dyn KeyValueDB>
-//{
-//    pub fn iter<'a, K, V>(&self, subprefix: &'a [u8]) -> BaseIndexIterBar<'a, K, V>
-//        where
-//            K: StorageKey,
-//            V: StorageValue,
-//    {
-//        BaseIndexIterBar {
-//            base_iter: self.view.as_ref().iter_from_prefix(COL, subprefix),
-//            base_prefix_len: self.name.len() + self.index_id.as_ref().map_or(0, |p| p.len()),
-//            index_id: subprefix.clone().to_vec(),
-//            ended: false,
-//            _k: PhantomData,
-//            _v: PhantomData,
-//        }
-//    }
-//
-//    fn prefix_key<K: StorageKey + ?Sized>(&self, key: &K) -> Vec<u8> {
-//        let index_len = self.index_id.as_ref().map_or(0, |item|item.len());
-//        let name_len = self.name.len();
-//        let mut prefix_key = vec![0; name_len + index_len + key.size()];
-//        prefix_key[..name_len].copy_from_slice(self.name.as_bytes());
-//
-//        if let Some(ref prefix) = self.index_id {
-//            prefix_key[name_len..index_len].copy_from_slice(&self.index_id.as_ref().map_or(&vec![], |item| item));
-//        }
-//
-//        key.write(&mut prefix_key[name_len + index_len..]);
-//        prefix_key
-//    }
-//}
-
-impl BaseIndexBar<Box<Database>>
-{
-    pub fn iter<P, K, V>(&self, subprefix: &P) -> BaseIndexIter<K, V>
-        where
-            P: StorageKey,
-            K: StorageKey,
-            V: StorageValue,
-    {
-        let iter_prefix =  self.prefix_key(subprefix);
-        BaseIndexIter {
-            base_iter: self.view.iter_from_prefix(COL, &iter_prefix).unwrap(),
-            base_prefix_len: self.name.len() + self.index_id.as_ref().map_or(0, |p| p.len()),
-            index_id: iter_prefix,
-            ended: false,
-            _k: PhantomData,
-            _v: PhantomData,
-        }
-    }
-
-    fn prefix_key<K: StorageKey + ?Sized>(&self, key: &K) -> Vec<u8> {
-        let index_len = self.index_id.as_ref().map_or(0, |item|item.len());
-        let name_len = self.name.len();
-        let mut prefix_key = vec![0; name_len + index_len + key.size()];
-        prefix_key[..name_len].copy_from_slice(self.name.as_bytes());
-
-        if let Some(ref prefix) = self.index_id {
-            prefix_key[name_len..index_len].copy_from_slice(&self.index_id.as_ref().map_or(&vec![], |item| item));
-        }
-
-        key.write(&mut prefix_key[name_len + index_len..]);
-        prefix_key
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{self, Write};
 
-    use ::rand::random;
-    use std::borrow::Borrow;
     use common::random_dir;
-
-    const IDX_NAME: &'static str = "idx_name";
-
-    #[test]
-    fn t(){
-        let db = Database::open_default(&random_dir()).unwrap();
-        {
-            let index = BaseIndex::new("transaction", IndexType::Map, db.borrow());
-            let index = BaseIndex::new("transaction", IndexType::Map, db.borrow());
-
-        }
-    }
-
+    use rand::random;
+    use std::borrow::Borrow;
 
     #[test]
-    fn t1(){
-        let db = Database::open_default(&random_dir()).unwrap();
-
+    fn t() {
+        let db = Arc::new(Database::open_default(&random_dir()).unwrap());
         {
-            let mut index: BaseIndexBar<_> = BaseIndexBar {name: "".to_string(), index_id: None, index_type: IndexType::Map, view: Box::new(db.borrow())};
-            let mut index1: BaseIndexBar<_> = BaseIndexBar {name: "".to_string(), index_id: None, index_type: IndexType::Map, view: Box::new(db.borrow())};
+            let index = BaseIndex::new("transaction", IndexType::Map, db.clone());
+            let mut index = BaseIndex::new("transaction", IndexType::Map, db.clone());
+            let prefix = "block_".to_string();
+            (0..100).for_each(|idx| {
+                let (key, value) = (format!("{}{}", prefix, idx), format!("{}", idx + 2));
+                index.put(&key, value);
+            });
 
-
-//            let iter = index.iter();
-//            iter.for_each(|(key, value)|{
-//                writeln!(io::stdout(), "key: {}, value: {}", key, value);
-//            });
-//
-//            let iter = index.iter();
-//            assert_eq!(iter.count(), 100);
-        }
-
-
-        {
-            {
-                let mut index: BaseIndexBar<_> = BaseIndexBar {name: "".to_string(), index_id: None, index_type: IndexType::Map, view: Box::new(db.borrow())};
-
-
-//            let iter = index.iter();
-//            iter.for_each(|(key, value)|{
-//                writeln!(io::stdout(), "key: {}, value: {}", key, value);
-//            });
-//
-//            let iter = index.iter();
-//            assert_eq!(iter.count(), 100);
-            }
+            let iter = index.iter::<String, String, String>(&prefix);
+            iter.for_each(|(key, value)| {
+                writeln!(io::stdout(), "key:{}, value:{}", key, value).unwrap();
+            })
         }
     }
 }

@@ -30,7 +30,7 @@ pub trait ValidatorSet {
 type ProposalSelector = fn(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator;
 
 fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator {
-    assert!(vals.len() > 0);
+    assert!(!vals.is_empty());
     let seed = (randon_seed(blh, height, vals) + round) % vals.len() as u64;
     vals[seed as usize].clone()
 }
@@ -62,7 +62,7 @@ impl ImplValidatorSet {
         };
 
         for x in address {
-            set.validators.push(Validator::new(x.clone()));
+            set.validators.push(Validator::new(*x));
         }
         set.validators.sort_by_key(|k| *k.address());
         set

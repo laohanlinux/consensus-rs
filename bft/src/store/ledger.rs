@@ -1,4 +1,4 @@
-use cryptocurrency_kit::crypto::{hash, Hash, CryptoHash};
+use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use kvdb_rocksdb::{Database, DatabaseConfig, DatabaseIterator};
 use lru_time_cache::LruCache;
 
@@ -15,12 +15,16 @@ pub struct LastMeta {
 
 impl LastMeta {
     pub fn new_zero() -> Self {
-        Self::new(0, Hash::zero(), Header::zero_header(),
-                  Block::new(Header::zero_header(), vec![], None))
+        Self::new(
+            0,
+            Hash::zero(),
+            Header::zero_header(),
+            Block::new(Header::zero_header(), vec![], None),
+        )
     }
 
     pub fn new(height: Height, block_hash: Hash, header: Header, block: Block) -> Self {
-        LastMeta{
+        LastMeta {
             height,
             block_hash,
             header,
@@ -38,7 +42,12 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub fn new(meta: LastMeta, header_cache: LruCache<Hash, Header>, block_cache: LruCache<Hash, Block>, db: Database) -> Self {
+    pub fn new(
+        meta: LastMeta,
+        header_cache: LruCache<Hash, Header>,
+        block_cache: LruCache<Hash, Block>,
+        db: Database,
+    ) -> Self {
         Ledger {
             meta,
             header_cache,
@@ -72,21 +81,21 @@ impl Ledger {
     }
 
     pub fn get_block(&self, block_hash: &Hash) -> Option<Block> {
-//        self.block_cache.get(block_hash).unwrap_or_else( ||{
-//            self.db.get()
-//        })
+        //        self.block_cache.get(block_hash).unwrap_or_else( ||{
+        //            self.db.get()
+        //        })
         None
     }
 
-    pub fn get_validators(height: &Height) -> Vec<Validator> {
+    pub fn get_validators(height: Height) -> Vec<Validator> {
         vec![]
     }
 
-    pub fn get_block_by_height(height: &Height) -> Option<Block> {
+    pub fn get_block_by_height(height: Height) -> Option<Block> {
         None
     }
 
-    pub fn get_header_by_height(height: &Height) -> Option<Header> {
+    pub fn get_header_by_height(height: Height) -> Option<Header> {
         None
     }
 
@@ -94,18 +103,18 @@ impl Ledger {
         let header = block.header();
         let hash = header.hash();
         if self.meta.header.height >= header.height {
-            return
+            return;
         }
 
         // update last meta
         self.meta.header = header.clone();
         self.meta.height = header.height;
-        self.meta.block_hash = hash.clone();
+        self.meta.block_hash = hash;
         self.meta.block = block.clone();
 
         // cache it
-        self.header_cache.insert(hash.clone(), header.clone());
-        self.block_cache.insert(hash.clone(), block.clone());
+        self.header_cache.insert(hash, header.clone());
+        self.block_cache.insert(hash, block.clone());
     }
 
     pub fn get_db(&self) -> &Database {

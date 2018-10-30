@@ -8,16 +8,16 @@ impl Votes {
         Votes(votes)
     }
 
-    pub fn add_vote(&mut self, vote: Signature) -> bool {
-        let ok = self.0.iter().any(|e_vote| *e_vote == vote);
+    pub fn add_vote(&mut self, vote: &Signature) -> bool {
+        let ok = self.0.iter().any(|e_vote| *e_vote == *vote);
         if ok {
             return ok;
         }
-        self.0.push(vote);
+        self.0.push(vote.clone());
         false
     }
 
-    pub fn remove_vote(&mut self, vote: Signature) -> bool {
+    pub fn remove_vote(&mut self, vote: &Signature) -> bool {
         self.0.remove_item(&vote).is_some()
     }
 
