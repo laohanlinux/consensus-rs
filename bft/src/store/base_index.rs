@@ -206,10 +206,13 @@ where
     type Item = (K::Owned, V);
 
     fn next(&mut self) -> Option<Self::Item> {
+        use std::io::{self, Write};
         if self.ended {
             return None;
         }
+
         if let Some((k, v)) = self.base_iter.next() {
+            writeln!(io::stdout(), "=======>{:?}, {:?}", String::from_utf8_lossy(&k), v).unwrap();
             if k.starts_with(&self.index_id) {
                 return Some((
                     K::read(&k[self.base_prefix_len..]),
@@ -220,22 +223,6 @@ where
         self.ended = true;
         None
     }
-}
-
-pub struct BaseIndexBar<T> {
-    name: String,
-    index_id: Option<Vec<u8>>,
-    index_type: IndexType,
-    pub view: T,
-}
-
-pub struct BaseIndexIterBar<'a, K, V> {
-    base_iter: Box<Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a>,
-    base_prefix_len: usize,
-    index_id: Vec<u8>,
-    ended: bool,
-    _k: PhantomData<K>,
-    _v: PhantomData<V>,
 }
 
 #[cfg(test)]
@@ -265,4 +252,17 @@ mod tests {
             })
         }
     }
+//
+//    #[test]
+//    fn keys() {
+//        let db = Arc::new(Database::open_default(&random_dir())).unwrap();
+//        let mut index = BaseIndex::new("transaction", IndexType::Map, db.clone());
+//        let prefix = "block_".to_string();
+//        (0..100).for_each(|idx|{
+//            let (key, value) = (format!("{}{}", prefix, idx), format!("{}", idx + 2));
+//            index.put(&key, value);
+//        });
+//
+//        let key_iter = index
+//    }
 }
