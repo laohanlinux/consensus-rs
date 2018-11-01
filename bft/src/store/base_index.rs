@@ -206,13 +206,11 @@ where
     type Item = (K::Owned, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        use std::io::{self, Write};
         if self.ended {
             return None;
         }
 
         if let Some((k, v)) = self.base_iter.next() {
-            writeln!(io::stdout(), "=======>{:?}, {:?}", String::from_utf8_lossy(&k), v).unwrap();
             if k.starts_with(&self.index_id) {
                 return Some((
                     K::read(&k[self.base_prefix_len..]),

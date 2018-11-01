@@ -2,6 +2,7 @@ use std::{borrow::Borrow, marker::PhantomData};
 use std::sync::Arc;
 
 use cryptocurrency_kit::storage::{keys::StorageKey, values::StorageValue};
+use cryptocurrency_kit::types::Zero;
 use kvdb_rocksdb::Database;
 
 use super::base_index::{BaseIndex, BaseIndexIter, IndexType};
@@ -29,13 +30,13 @@ where
     }
 }
 
-//#[derive(Debug)]
+//#[derive(Debug, Clone)]
 pub struct MapIndexKeys<'a, K> {
-    base_iter: BaseIndexIter<'a, K, ()>,
+    base_iter: BaseIndexIter<'a, K, Zero>,
 }
 
 pub struct MapIndexValues<'a, V> {
-    base_iter: BaseIndexIter<'a, (), V>,
+    base_iter: BaseIndexIter<'a, Zero, V>,
 }
 
 impl<K, V> MapIndex<K, V>
@@ -162,9 +163,13 @@ mod tests {
         (0..100).for_each(|idx|{
             index.put(&format!("{}", idx), (idx+1).to_string());
         });
-        let mut keys = index.keys();
-
+        let ref mut keys = index.keys();
         assert_eq!(keys.count(), 100);
+
+        let ref mut keys = index.keys();
+        keys.for_each(|key|{
+            writeln!(io::stdout(), "key: {}", key);
+        });
     }
 
     #[test]
@@ -177,16 +182,6 @@ mod tests {
             (0..100).for_each(|idx|{
                 index.put(&format!("{}", idx), idx+1);
             });
-//
-//            let iter = index.iter();
-////            iter.for_each(|(key, value)|{
-////                writeln!(io::stdout(), "key: {}, value: {}", key, value);
-////            });
-//
-//            let iter = index.iter();
-//            assert_eq!(iter.count(), 100);
-
-            // keys
             let mut keys = index.keys();
             assert_eq!(keys.count(), 100);
         }
