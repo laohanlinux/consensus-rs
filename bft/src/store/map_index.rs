@@ -1,5 +1,5 @@
-use std::{borrow::Borrow, marker::PhantomData};
 use std::sync::Arc;
+use std::{borrow::Borrow, marker::PhantomData};
 
 use cryptocurrency_kit::storage::{keys::StorageKey, values::StorageValue};
 use cryptocurrency_kit::types::Zero;
@@ -18,7 +18,7 @@ pub struct MapIndexIter<'a, K, V> {
     base_iter: BaseIndexIter<'a, K, V>,
 }
 
-impl <'a, K, V> Iterator for MapIndexIter<'a, K, V>
+impl<'a, K, V> Iterator for MapIndexIter<'a, K, V>
 where
     K: StorageKey,
     V: StorageValue,
@@ -120,14 +120,25 @@ where
 }
 
 impl<'a, K> Iterator for MapIndexKeys<'a, K>
-    where
-        K: StorageKey,
+where
+    K: StorageKey,
 {
     type Item = K::Owned;
 
     fn next(&mut self) -> Option<Self::Item> {
         // ignore the value
         self.base_iter.next().map(|(k, ..)| k)
+    }
+}
+
+impl<'a, V> Iterator for MapIndexValues<'a, V>
+where
+    V: StorageValue,
+{
+    type Item = V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.base_iter.next().map(|(.., v)| v)
     }
 }
 
@@ -154,21 +165,38 @@ mod tests {
     }
 
     #[test]
-    fn key_iter(){
+    fn key_iter() {
         let db = Arc::new(newdb());
         let mut index: MapIndex<String, String> = MapIndex::new(IDX_NAME, db.clone());
         let mut keys = index.keys();
         assert_eq!(keys.count(), 0);
 
-        (0..100).for_each(|idx|{
-            index.put(&format!("{}", idx), (idx+1).to_string());
+        (0..100).for_each(|idx| {
+            index.put(&format!("{}", idx), (idx + 1).to_string());
         });
         let ref mut keys = index.keys();
         assert_eq!(keys.count(), 100);
 
         let ref mut keys = index.keys();
-        keys.for_each(|key|{
+        keys.for_each(|key| {
             writeln!(io::stdout(), "key: {}", key);
+        });
+    }
+
+    #[test]
+    fn value_iter() {
+        let db = Arc::new(newdb());
+        let mut index: MapIndex<String, String> = MapIndex::new(IDX_NAME, db.clone());
+        assert_eq!(index.values().count(), 0);
+
+        (0..100).for_each(|idx| {
+            index.put(&format!("{}", idx), (idx + 1).to_string());
+        });
+        assert_eq!(index.values().count(), 100);
+
+        let ref mut values = index.values();
+        values.for_each(|value| {
+            writeln!(io::stdout(), "value: {}", value);
         });
     }
 
@@ -179,27 +207,27 @@ mod tests {
         {
             let mut index: MapIndex<String, i32> = MapIndex::new(IDX_NAME, db.clone());
 
-            (0..100).for_each(|idx|{
-                index.put(&format!("{}", idx), idx+1);
+            (0..100).for_each(|idx| {
+                index.put(&format!("{}", idx), idx + 1);
             });
             let mut keys = index.keys();
             assert_eq!(keys.count(), 100);
         }
 
-//
-//        {
-//            let mut index: MapIndex<String, _> = MapIndex::new("index2_name".to_string(), db.clone());
-//            (0..100).for_each(|idx|{
-//                index.put(&format!("{}", idx), idx+1);
-//            });
-//
-//            let iter = index.iter();
-////            iter.for_each(|(key, value)|{
-////                writeln!(io::stdout(), "key: {}, value: {}", key, value);
-////            });
-//
-//            let iter = index.iter();
-//            assert_eq!(iter.count(), 100);
-//        }
+        {
+            let mut index: MapIndex<String, _> =
+                MapIndex::new("index2_name".to_string(), db.clone());
+            (0..100).for_each(|idx| {
+                index.put(&format!("{}", idx), idx + 1);
+            });
+
+            let iter = index.iter();
+            iter.for_each(|(key, value)| {
+                writeln!(io::stdout(), "key: {}, value: {}", key, value);
+            });
+
+            let iter = index.iter();
+            assert_eq!(iter.count(), 100);
+        }
     }
 }
