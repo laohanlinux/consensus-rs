@@ -135,19 +135,34 @@ impl BaseIndex {
         }
     }
 
-    //    pub fn iter_from<P, F, K, V>(&self, subprefix:&P, from:&F) -> BaseIndexIter<K, V>
-    //    where
-    //        P: StorageKey,
-    //        F: StorageKey + ?Sized,
-    //        K: StorageKey,
-    //        V: StorageValue,
-    //    {
-    //        let iter_prefix = self.prefix_key(subprefix);
-    //        let iter_from = self.prefix_key(from);
-    //        BaseIndexIter {
-    //            base_iter: self.view.iter_from_prefix(COL, )
-    //        }
-    //    }
+    pub fn iter_from<P, F, K, V>(&self, subprefix: &P, from: &F) -> BaseIndexIter<K, V>
+    where
+        P: StorageKey,
+        F: StorageKey + ?Sized,
+        K: StorageKey,
+        V: StorageValue,
+    {
+        let mut prefix_buf = self.prefix_key(subprefix);
+        let mut base_prefix_len= prefix_buf.len();
+
+        let mut iter_prefix = {
+            let mut buf = vec![0; from.size()];
+            from.write(&mut buf);
+            prefix_buf.extend_from_slice(&buf);
+            prefix_buf
+        };
+//        use std::io::{self, Write};
+//        writeln!(io::stdout(), "iter_prefix {:?}", iter_prefix).unwrap();
+
+        BaseIndexIter{
+            base_iter: self.view.iter_from_prefix(COL, &iter_prefix).unwrap(),
+            base_prefix_len,
+            index_id: Vec::from(&iter_prefix[..base_prefix_len]),
+            ended: false,
+            _k: PhantomData,
+            _v: PhantomData,
+        }
+    }
 
     /////////////////////////////
     pub fn fork(&mut self) -> &Database {
@@ -211,6 +226,9 @@ where
         }
 
         if let Some((k, v)) = self.base_iter.next() {
+//            print_str(&k, &v);
+//            print_bytes(self.base_prefix_len,&self.index_id, &k, &v);
+
             if k.starts_with(&self.index_id) {
                 return Some((
                     K::read(&k[self.base_prefix_len..]),
@@ -223,9 +241,20 @@ where
     }
 }
 
+pub(crate) fn print_str(key: &[u8], value: &[u8]) {
+    use std::io::{self, Write};
+    writeln!(io::stdout(), "key: {}, value: {}", String::from_utf8_lossy(key), String::from_utf8_lossy(value)).unwrap();
+}
+
+pub(crate) fn print_bytes(base_prefix_len: usize, idx: &[u8], key: &[u8], value: &[u8]) {
+    use std::io::{self, Write};
+    writeln!(io::stdout(), "base_prefix_len:{}, idx: {:?}, key: {:?}, value: {:?}",base_prefix_len, idx, key, value).unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cryptocurrency_kit::types::Zero;
     use std::io::{self, Write};
 
     use common::random_dir;
@@ -250,17 +279,33 @@ mod tests {
             })
         }
     }
-//
-//    #[test]
-//    fn keys() {
-//        let db = Arc::new(Database::open_default(&random_dir())).unwrap();
-//        let mut index = BaseIndex::new("transaction", IndexType::Map, db.clone());
-//        let prefix = "block_".to_string();
-//        (0..100).for_each(|idx|{
-//            let (key, value) = (format!("{}{}", prefix, idx), format!("{}", idx + 2));
-//            index.put(&key, value);
-//        });
-//
-//        let key_iter = index
-//    }
+
+    #[test]
+    fn t_iter_from(){
+        let db = Arc::new(Database::open_default(&random_dir()).unwrap());
+        let mut index = BaseIndex::new("transaction", IndexType::List, db.clone());
+        let prefix = "block_".to_string();
+        (0..100).for_each(|idx| {
+            let (key, value) = (format!("{}{}", prefix, idx), format!("{:?}", idx + 2));
+            writeln!(io::stdout(), "===> {:?}", value).unwrap();
+            index.put(&key, value);
+        });
+
+        {
+            let iter = index.iter_from::<String, String, String, String>(&"".to_owned(), &"block".to_owned());
+            assert_eq!(iter.count(), 100);
+        }
+
+
+        {
+            let iter = index.iter_from::<String, String, String, String>(&"".to_owned(), &"block".to_owned());
+            iter.for_each(|item|{
+                writeln!(io::stdout(), "{:?}, {:?}", item.0, item.1).unwrap();
+            });
+        }
+
+        {
+            let iter = index.iter_from::<String, String, String, String>(&"".to_owned(), &"block".to_owned());
+        }
+    }
 }
