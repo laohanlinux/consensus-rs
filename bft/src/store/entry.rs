@@ -19,9 +19,9 @@ impl<V> Entry<V>
 where
     V: StorageValue,
 {
-    pub fn new<S: AsRef<str>>(index_name: S, View: Arc<Database>) -> Self {
+    pub fn new<S: AsRef<str>>(index_name: S, view: Arc<Database>) -> Self {
         Entry {
-            base: BaseIndex::new(index_name, IndexType::Entry, View),
+            base: BaseIndex::new(index_name, IndexType::Entry, view),
             _v: PhantomData,
         }
     }

@@ -179,7 +179,7 @@ mod tests {
 
         let ref mut keys = index.keys();
         keys.for_each(|key| {
-            writeln!(io::stdout(), "key: {}", key);
+            writeln!(io::stdout(), "key: {}", key).unwrap();
         });
     }
 
@@ -196,7 +196,7 @@ mod tests {
 
         let ref mut values = index.values();
         values.for_each(|value| {
-            writeln!(io::stdout(), "value: {}", value);
+            writeln!(io::stdout(), "value: {}", value).unwrap();
         });
     }
 
@@ -223,7 +223,7 @@ mod tests {
 
             let iter = index.iter();
             iter.for_each(|(key, value)| {
-                writeln!(io::stdout(), "key: {}, value: {}", key, value);
+                writeln!(io::stdout(), "key: {}, value: {}", key, value).unwrap();
             });
 
             let iter = index.iter();

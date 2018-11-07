@@ -3,8 +3,8 @@ use super::Gas;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::signature::*;
 use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
-use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::storage::keys::StorageKey;
+use cryptocurrency_kit::storage::values::StorageValue;
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
@@ -20,14 +20,12 @@ pub struct Transaction {
     #[serde(rename = "price")]
     gas_price: u64,
     gas_limit: Gas,
-    #[serde(skip_serializing_if = "Option::is_none")]
     recipient: Option<Address>,
     amount: u64,
     #[serde(default)]
     payload: Vec<u8>,
-    #[serde(rename = "sign", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "sign")]
     signature: Option<Signature>,
-    #[serde(rename = "sign", skip_serializing_if = "Option::is_none")]
     hash: Option<Hash>,
 }
 
@@ -115,7 +113,7 @@ struct TransactionSignature {
     amount: u64,
     #[serde(default)]
     payload: Vec<u8>,
-    #[serde(rename = "sign", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "sign")]
     signature: Option<Signature>,
 }
 

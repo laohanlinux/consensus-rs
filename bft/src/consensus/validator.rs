@@ -293,7 +293,7 @@ mod tests {
             assert_eq!(val_set.two_thirds_majority(), 4);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(3));
-            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority());
+            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority()).unwrap();
         }
 
         /// equal 3 validators
@@ -303,7 +303,7 @@ mod tests {
             assert_eq!(val_set.two_thirds_majority(), 3);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(2));
-            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority());
+            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority()).unwrap();
         }
     }
 }
