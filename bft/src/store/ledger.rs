@@ -1,3 +1,5 @@
+use std::sync::RwLock;
+
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use kvdb_rocksdb::{Database, DatabaseConfig, DatabaseIterator};
 use lru_time_cache::LruCache;
@@ -5,6 +7,8 @@ use lru_time_cache::LruCache;
 use types::block::{Block, Header};
 use types::transaction::Transaction;
 use types::{Height, Validator};
+
+use super::schema::Schema;
 
 pub struct LastMeta {
     height: Height,
@@ -36,9 +40,10 @@ impl LastMeta {
 /// it is not thread safe
 pub struct Ledger {
     meta: LastMeta,
-    header_cache: LruCache<Hash, Header>,
-    block_cache: LruCache<Hash, Block>,
-    db: Database,
+    header_cache: RwLock<LruCache<Hash, Header>>,
+    block_cache: RwLock<LruCache<Hash, Block>>,
+    validators: Vec<Validator>,
+    schema: Schema,
 }
 
 impl Ledger {
@@ -46,18 +51,20 @@ impl Ledger {
         meta: LastMeta,
         header_cache: LruCache<Hash, Header>,
         block_cache: LruCache<Hash, Block>,
-        db: Database,
+        validators: Vec<Validator>,
+        schema: Schema,
     ) -> Self {
         Ledger {
             meta,
-            header_cache,
-            block_cache,
-            db,
+            header_cache: RwLock::new(header_cache),
+            block_cache: RwLock::new(block_cache),
+            validators,
+            schema,
         }
     }
 
-    pub fn get_transaction(tx_hash: &Hash) -> Option<Transaction> {
-        None
+    pub fn get_transaction(&self, tx_hash: &Hash) -> Option<Transaction> {
+        self.schema.transaction().get(tx_hash)
     }
 
     pub fn get_last_block_height(&self) -> &Height {
@@ -76,26 +83,62 @@ impl Ledger {
         &self.meta.block_hash
     }
 
-    pub fn get_block_header(block_hash: &Hash) -> Option<Header> {
+    pub fn get_block_header(&self, block_hash: &Hash) -> Option<Header> {
+        let mut cache = self.header_cache.write().unwrap();
+        if let Some(header) = cache.get_mut(block_hash) {
+            return Some(header.clone());
+        }
+
+        if let Some(block) = self.schema.blocks().get(block_hash) {
+            return Some(block.header().clone());
+        }
         None
     }
 
     pub fn get_block(&self, block_hash: &Hash) -> Option<Block> {
-        //        self.block_cache.get(block_hash).unwrap_or_else( ||{
-        //            self.db.get()
-        //        })
+        let mut cache = self.block_cache.write().unwrap();
+        let block = cache.get(block_hash);
+        if block.is_none() {
+            let db = self.schema.blocks();
+            let block = db.get(block_hash);
+            if block.is_some() {
+                cache.insert(*block_hash, block.as_ref().unwrap().clone());
+                return block;
+            }
+        }
         None
     }
 
-    pub fn get_validators(height: Height) -> Vec<Validator> {
-        vec![]
+    //  FIXME store it into schema
+    pub fn get_validators(&self, height: Height) -> &Vec<Validator> {
+        &self.validators
     }
 
-    pub fn get_block_by_height(height: Height) -> Option<Block> {
+    pub fn get_block_by_height(&self, height: Height) -> Option<Block> {
+        if let Some(hash) = self.schema.block_hash_by_height(height) {
+            if let Some(block) = self.block_cache.write().unwrap().get(&hash) {
+                return Some(block.clone());
+            }
+            if let Some(block) = self.schema.blocks().get(&hash) {
+                // cache it
+                self.block_cache.write().unwrap().insert(hash, block.clone());
+                return Some(block.clone());
+            }
+        }
         None
     }
 
-    pub fn get_header_by_height(height: Height) -> Option<Header> {
+    pub fn get_header_by_height(&self, height: Height) -> Option<Header> {
+        if let Some(block_hash) = self.schema.block_hash_by_height(height) {
+            if let Some(header) = self.header_cache.write().unwrap().get(&block_hash) {
+                return Some(header.clone());
+            }
+            if let Some(block) = self.schema.blocks().get(&block_hash) {
+                // cache it
+                self.header_cache.write().unwrap().insert(block_hash, block.header().clone());
+                return Some(block.header().clone());
+            }
+        }
         None
     }
 
@@ -112,13 +155,22 @@ impl Ledger {
         self.meta.block_hash = hash;
         self.meta.block = block.clone();
 
+        // persists
+        let mut block_db = self.schema.blocks();
+        block_db.put(&hash, block.clone());
         // cache it
-        self.header_cache.insert(hash, header.clone());
-        self.block_cache.insert(hash, block.clone());
+        self.header_cache
+            .get_mut()
+            .unwrap()
+            .insert(hash, header.clone());
+        self.block_cache
+            .get_mut()
+            .unwrap()
+            .insert(hash, block.clone());
     }
 
-    pub fn get_db(&self) -> &Database {
-        &self.db
+    pub fn get_schema(&self) -> &Schema {
+        &self.schema
     }
 }
 

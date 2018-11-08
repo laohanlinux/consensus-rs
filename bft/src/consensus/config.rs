@@ -1,7 +1,7 @@
 #[derive(Debug, Clone)]
-struct Config {
-    request_time: u64,
-    block_period: u64,
+pub struct Config {
+    pub request_time: u64,
+    pub block_period: u64,
 }
 
 impl Config {
