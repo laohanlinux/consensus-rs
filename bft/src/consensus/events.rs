@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 use std::any::{Any, TypeId};
 
-use super::types::{Proposal,Height, View};
+use super::types::{Proposal, View};
+use crate::types::Height;
 
 #[derive(Debug)]
 pub enum RequestEventType{

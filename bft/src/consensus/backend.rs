@@ -8,9 +8,9 @@ use cryptocurrency_kit::ethkey::{
 };
 use std::time::Duration;
 
-use super::types::{Height, Proposal};
+use super::types::Proposal;
 use super::validator::{ImplValidatorSet, ValidatorSet};
-use types::{Validator, EMPTY_ADDRESS};
+use types::{Height, Validator, EMPTY_ADDRESS};
 
 pub trait Backend {
     /// address is the current validator's address

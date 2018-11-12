@@ -121,7 +121,10 @@ impl Ledger {
             }
             if let Some(block) = self.schema.blocks().get(&hash) {
                 // cache it
-                self.block_cache.write().unwrap().insert(hash, block.clone());
+                self.block_cache
+                    .write()
+                    .unwrap()
+                    .insert(hash, block.clone());
                 return Some(block.clone());
             }
         }
@@ -135,7 +138,10 @@ impl Ledger {
             }
             if let Some(block) = self.schema.blocks().get(&block_hash) {
                 // cache it
-                self.header_cache.write().unwrap().insert(block_hash, block.header().clone());
+                self.header_cache
+                    .write()
+                    .unwrap()
+                    .insert(block_hash, block.header().clone());
                 return Some(block.header().clone());
             }
         }

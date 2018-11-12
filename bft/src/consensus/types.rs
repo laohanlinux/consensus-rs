@@ -10,7 +10,9 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::io::Cursor;
 
-pub type Height = u64;
+use types::Height;
+
+pub type Round = u64;
 
 pub trait Proposal: Debug + Display {
     fn height(&self) -> Height;
@@ -21,7 +23,7 @@ pub struct Request<T: Proposal + CryptoHash + StorageValue> {
     proposal: T,
 }
 
-#[derive(Debug, Clone, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Eq, Deserialize, Serialize)]
 pub struct View {
     pub round: u64,
     pub height: Height,

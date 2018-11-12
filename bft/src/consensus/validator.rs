@@ -2,8 +2,7 @@ use bigint::U128;
 use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::ethkey::Address;
 
-use super::types::Height;
-use ::types::Validator;
+use types::{Height, Validator};
 
 pub type Validators = Vec<Validator>;
 
@@ -29,7 +28,7 @@ pub trait ValidatorSet {
 /// TODO Opitz
 type ProposalSelector = fn(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator;
 
-fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator {
+pub fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator {
     assert!(!vals.is_empty());
     let seed = (randon_seed(blh, height, vals) + round) % vals.len() as u64;
     vals[seed as usize].clone()
@@ -126,7 +125,8 @@ impl ValidatorSet for ImplValidatorSet {
             return false;
         }
         self.validators.push(Validator::new(address));
-        self.validators.sort_by_key(|validator| *validator.address());
+        self.validators
+            .sort_by_key(|validator| *validator.address());
         true
     }
 
