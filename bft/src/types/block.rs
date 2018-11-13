@@ -108,8 +108,15 @@ impl Block {
         &self.header
     }
 
+    pub fn height(&self) -> Height {self.header.height}
+
     pub fn transactions(&self) -> &Vec<Transaction> {
         &self.transactions
+    }
+
+    pub fn coinbase(&self) -> Address {
+        let coinbase = self.header.proposer;
+        coinbase
     }
 
     pub fn votes(&self) -> Option<&Votes> {

@@ -5,4 +5,4 @@ mod map_index;
 mod iter;
 mod schema;
 mod types;
-mod ledger;
+pub mod ledger;

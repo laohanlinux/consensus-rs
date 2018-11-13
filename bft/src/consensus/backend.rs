@@ -7,7 +7,9 @@ use cryptocurrency_kit::ethkey::{
     sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
 };
 use std::time::Duration;
+use std::sync::{Arc, RwLock};
 
+use store::ledger::Ledger;
 use super::types::Proposal;
 use super::validator::{ImplValidatorSet, ValidatorSet};
 use types::{Height, Validator, EMPTY_ADDRESS};
@@ -44,6 +46,7 @@ struct ImplBackend<T: ValidatorSet> {
     key_pair: KeyPair,
     inbound_cache: LruCache<Hash, String>,
     outbound_cache: LruCache<Hash, String>,
+    ledger: Arc<RwLock<Ledger>>,
 }
 
 impl<T> Backend for ImplBackend<T>
@@ -99,6 +102,8 @@ where
 
     /// TODO
     fn last_proposal(&self) -> Result<&Proposal, ()> {
+        let ledger = self.ledger.read().unwrap();
+        let block = ledger.get_last_block();
         Err(())
     }
 
