@@ -1,18 +1,19 @@
 use lru_time_cache::LruCache;
 
-use cryptocurrency_kit::crypto::hash;
-use cryptocurrency_kit::crypto::Hash;
+use cryptocurrency_kit::crypto::{CryptoHash, Hash, EMPTY_HASH, hash};
 use cryptocurrency_kit::ethkey::keccak::Keccak256;
 use cryptocurrency_kit::ethkey::{
     sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
 };
-use std::time::Duration;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-use store::ledger::Ledger;
+use super::config::Config;
 use super::types::Proposal;
 use super::validator::{ImplValidatorSet, ValidatorSet};
+use store::ledger::Ledger;
 use types::{Height, Validator, EMPTY_ADDRESS};
+use types::block::Header;
 
 pub trait Backend {
     /// address is the current validator's address
@@ -33,11 +34,11 @@ pub trait Backend {
     fn sign(&self, digest: &[u8]) -> Result<Vec<u8>, ()>;
     fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<bool, ()>;
 
-    fn last_proposal(&self) -> Result<&Proposal, ()>;
-    fn has_proposal(&self, hash: &Hash, height: &Height) -> bool;
+    fn last_proposal(&self) -> Result<Proposal, ()>;
+    fn has_proposal(&self, hash: &Hash, height: Height) -> bool;
     fn get_proposer(&self, height: Height) -> Address;
     fn parent_validators(&self, proposal: &Proposal) -> &ValidatorSet;
-    fn has_bad_proposal(hash: Hash) -> bool;
+    fn has_bad_proposal(&self, hash: Hash) -> bool;
 }
 
 struct ImplBackend<T: ValidatorSet> {
@@ -47,6 +48,7 @@ struct ImplBackend<T: ValidatorSet> {
     inbound_cache: LruCache<Hash, String>,
     outbound_cache: LruCache<Hash, String>,
     ledger: Arc<RwLock<Ledger>>,
+    config: Config,
 }
 
 impl<T> Backend for ImplBackend<T>
@@ -81,6 +83,18 @@ where
 
     /// TODO
     fn verify(&self, proposal: &Proposal) -> Result<Duration, ()> {
+        let block = &proposal.0;
+        let header = block.header();
+        let blh = header.hash();
+        if self.has_bad_proposal(blh) {
+            return Err(());
+        }
+
+        for transaction in block.transactions() {
+            if !transaction.verify_sign(self.config.chain_id) {
+                return Err(());
+            }
+        }
         Err(())
     }
 
@@ -100,30 +114,33 @@ where
         verify_address(&address, &signature, &Message::from(keccak_hash.as_ref())).map_err(|_| ())
     }
 
-    /// TODO
-    fn last_proposal(&self) -> Result<&Proposal, ()> {
+    fn last_proposal(&self) -> Result<Proposal, ()> {
         let ledger = self.ledger.read().unwrap();
         let block = ledger.get_last_block();
-        Err(())
+        Ok(Proposal::new(block.clone()))
     }
 
-    /// TODO
-    fn has_proposal(&self, hash: &Hash, height: &Height) -> bool {
-        false
+    fn has_proposal(&self, hash: &Hash, height: Height) -> bool {
+        let ledger = self.ledger.read().unwrap();
+        let block_hash = ledger.get_block_hash_by_height(height);
+        block_hash.map_or(EMPTY_HASH, |v|v) == *hash
     }
 
-    /// TODO
     fn get_proposer(&self, height: Height) -> Address {
-        Address::from(0)
+        let header = {
+            let ledger = self.ledger.read().unwrap();
+            ledger.get_header_by_height(height)
+        };
+        header.map_or(*EMPTY_ADDRESS, |header| header.proposer)
     }
 
-    /// TODO
+    // TODO
     fn parent_validators(&self, proposal: &Proposal) -> &ValidatorSet {
         &self.validator_set
     }
 
     /// TODO
-    fn has_bad_proposal(hash: Hash) -> bool {
+    fn has_bad_proposal(&self, hash: Hash) -> bool {
         false
     }
 }

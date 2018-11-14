@@ -89,6 +89,14 @@ impl Transaction {
         self.signature = Some(signature.unwrap());
     }
 
+    pub fn verify_sign(&self, chai_id: u64) -> bool {
+        if self.signature.is_none() {
+            return false;
+        }
+        let payload = self.signature_payload();
+        recover_bytes(self.signature.as_ref().unwrap(), &payload).is_ok()
+    }
+
     pub fn set_signature(&mut self, sign: &Signature) {
         self.signature = Some(sign.clone());
     }

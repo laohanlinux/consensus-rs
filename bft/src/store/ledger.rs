@@ -83,6 +83,10 @@ impl Ledger {
         &self.meta.block_hash
     }
 
+    pub fn get_block_hash_by_height(&self, height: Height) -> Option<Hash> {
+        self.schema.block_hashes_by_height().get(height)
+    }
+
     pub fn get_block_header(&self, block_hash: &Hash) -> Option<Header> {
         let mut cache = self.header_cache.write().unwrap();
         if let Some(header) = cache.get_mut(block_hash) {
@@ -164,6 +168,8 @@ impl Ledger {
         // persists
         let mut block_db = self.schema.blocks();
         block_db.put(&hash, block.clone());
+        let mut heigh_db = self.schema.block_hashes_by_height();
+        heigh_db.push(hash.clone());
         // cache it
         self.header_cache
             .get_mut()

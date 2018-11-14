@@ -1,4 +1,4 @@
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
+use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH};
 use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::encoding::msgpack::*;
 use cryptocurrency_kit::ethkey::signature::*;
@@ -30,6 +30,7 @@ pub struct Header {
     pub time: Timestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra: Option<Vec<u8>>,
+    hash_cache: Option<Hash>,
 }
 
 implement_cryptohash_traits! {Header}
@@ -63,6 +64,7 @@ impl Header {
             gas_used,
             time: tm,
             extra,
+            hash_cache: None,
         }
     }
 
@@ -80,6 +82,7 @@ impl Header {
             gas_used: 0,
             time: 0,
             extra: None,
+            hash_cache: None,
         }
     }
 }

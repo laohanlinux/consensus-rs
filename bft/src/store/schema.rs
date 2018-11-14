@@ -83,6 +83,7 @@ impl Schema {
         );
         len - 1
     }
+
 }
 
 #[cfg(test)]

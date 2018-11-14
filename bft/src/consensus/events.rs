@@ -10,11 +10,8 @@ pub enum RequestEventType{
     Msg,
 }
 
-pub struct RequestEvent<T: Proposal> {
-    proposal: T,
-}
-
-impl<T: Proposal> RequestEvent<T> {
+pub struct RequestEvent{
+    proposal: Proposal,
 }
 
 fn is_view<T: ?Sized + Any>(_s: &T) -> bool {
