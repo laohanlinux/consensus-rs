@@ -10,18 +10,30 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::io::Cursor;
 
-pub type Height = u64;
+use types::{Height, block::Block};
 
-pub trait Proposal: Debug + Display {
-    fn height(&self) -> Height;
+pub type Round = u64;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Proposal(pub Block);
+
+impl Proposal {
+    pub fn new(block: Block) -> Self {
+        Proposal(block)
+    }
+
+    pub fn copy(&self) -> Proposal {
+        let block = self.0.clone();
+        Proposal(block)
+    }
 }
 
 #[derive(Debug)]
-pub struct Request<T: Proposal + CryptoHash + StorageValue> {
+pub struct Request<T: CryptoHash + StorageValue> {
     proposal: T,
 }
 
-#[derive(Debug, Clone, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Eq, Deserialize, Serialize)]
 pub struct View {
     pub round: u64,
     pub height: Height,
@@ -29,12 +41,6 @@ pub struct View {
 
 implement_cryptohash_traits! {View}
 implement_storagevalue_traits! {View}
-
-impl Proposal for View {
-    fn height(&self) -> Height {
-        self.height
-    }
-}
 
 impl Display for View {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {

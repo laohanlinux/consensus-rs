@@ -2,8 +2,7 @@ use bigint::U128;
 use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::ethkey::Address;
 
-use super::types::Height;
-use ::types::Validator;
+use types::{Height, Validator};
 
 pub type Validators = Vec<Validator>;
 
@@ -29,8 +28,8 @@ pub trait ValidatorSet {
 /// TODO Opitz
 type ProposalSelector = fn(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator;
 
-fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator {
-    assert!(vals.len() > 0);
+pub fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator {
+    assert!(!vals.is_empty());
     let seed = (randon_seed(blh, height, vals) + round) % vals.len() as u64;
     vals[seed as usize].clone()
 }
@@ -62,7 +61,7 @@ impl ImplValidatorSet {
         };
 
         for x in address {
-            set.validators.push(Validator::new(x.clone()));
+            set.validators.push(Validator::new(*x));
         }
         set.validators.sort_by_key(|k| *k.address());
         set
@@ -126,7 +125,8 @@ impl ValidatorSet for ImplValidatorSet {
             return false;
         }
         self.validators.push(Validator::new(address));
-        self.validators.sort_by_key(|validator| *validator.address());
+        self.validators
+            .sort_by_key(|validator| *validator.address());
         true
     }
 
@@ -293,7 +293,7 @@ mod tests {
             assert_eq!(val_set.two_thirds_majority(), 4);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(3));
-            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority());
+            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority()).unwrap();
         }
 
         /// equal 3 validators
@@ -303,7 +303,7 @@ mod tests {
             assert_eq!(val_set.two_thirds_majority(), 3);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(2));
-            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority());
+            writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority()).unwrap();
         }
     }
 }

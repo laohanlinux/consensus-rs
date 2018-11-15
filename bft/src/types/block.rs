@@ -1,4 +1,5 @@
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
+use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH};
+use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::encoding::msgpack::*;
 use cryptocurrency_kit::ethkey::signature::*;
 use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
 use std::io::Cursor;
+use std::borrow::Cow;
 
 use super::transaction::Transaction;
 use super::votes::Votes;
@@ -28,9 +30,13 @@ pub struct Header {
     pub time: Timestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub votes: Option<Votes>,
+    hash_cache: Option<Hash>,
 }
 
 implement_cryptohash_traits! {Header}
+implement_storagevalue_traits! {Header}
 
 impl Header {
     pub fn new(
@@ -45,6 +51,7 @@ impl Header {
         gas_limit: Gas,
         gas_used: Gas,
         tm: Timestamp,
+        votes: Option<Votes>,
         extra: Option<Vec<u8>>,
     ) -> Self {
         Header {
@@ -60,6 +67,8 @@ impl Header {
             gas_used,
             time: tm,
             extra,
+            votes,
+            hash_cache: None,
         }
     }
 
@@ -77,6 +86,8 @@ impl Header {
             gas_used: 0,
             time: 0,
             extra: None,
+            votes: None,
+            hash_cache: None,
         }
     }
 }
@@ -86,15 +97,16 @@ pub struct Block {
     header: Header,
     #[serde(rename = "tx")]
     transactions: Vec<Transaction>,
-    votes: Option<Votes>, // the first vote is proposer's vote
 }
 
+implement_cryptohash_traits! {Block}
+implement_storagevalue_traits! {Block}
+
 impl Block {
-    pub fn new(header: Header, txs: Vec<Transaction>, votes: Option<Votes>) -> Self {
+    pub fn new(header: Header, txs: Vec<Transaction>) -> Self {
         Block {
             header,
             transactions: txs,
-            votes,
         }
     }
 
@@ -102,15 +114,36 @@ impl Block {
         &self.header
     }
 
+    pub fn height(&self) -> Height {self.header.height}
+
     pub fn transactions(&self) -> &Vec<Transaction> {
         &self.transactions
     }
 
+    pub fn coinbase(&self) -> Address {
+        let coinbase = self.header.proposer;
+        coinbase
+    }
+
     pub fn votes(&self) -> Option<&Votes> {
-        self.votes.as_ref()
+        self.header.votes.as_ref()
     }
 
     pub fn mut_votes(&mut self) -> Option<&mut Votes> {
-        self.votes.as_mut()
+        self.header.votes.as_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{self, Write};
+
+    #[test]
+    fn header(){
+        let header = Header::zero_header();
+        writeln!(io::stdout(), "{:#?}", header).unwrap();
+        let j_str = serde_json::to_string(&header).unwrap();
+        writeln!(io::stdout(), "{}", j_str).unwrap();
     }
 }

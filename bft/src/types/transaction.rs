@@ -1,10 +1,8 @@
-use super::Gas;
-
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::signature::*;
 use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
-use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::storage::keys::StorageKey;
+use cryptocurrency_kit::storage::values::StorageValue;
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
@@ -13,6 +11,9 @@ use serde_json::to_string;
 use std::borrow::Cow;
 use std::io::Cursor;
 
+use crate::common::merkle_tree_root;
+use super::Gas;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Transaction {
     #[serde(rename = "nonce")]
@@ -20,14 +21,12 @@ pub struct Transaction {
     #[serde(rename = "price")]
     gas_price: u64,
     gas_limit: Gas,
-    #[serde(skip_serializing_if = "Option::is_none")]
     recipient: Option<Address>,
     amount: u64,
     #[serde(default)]
     payload: Vec<u8>,
-    #[serde(rename = "sign", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "sign")]
     signature: Option<Signature>,
-    #[serde(rename = "sign", skip_serializing_if = "Option::is_none")]
     hash: Option<Hash>,
 }
 
@@ -86,9 +85,17 @@ impl Transaction {
     }
 
     /// TODO
-    pub fn sign(&mut self, chain_id: &u64, secret: &Secret) {
+    pub fn sign(&mut self, chain_id: u64, secret: &Secret) {
         let signature = sign_bytes(secret, &TransactionSignature::packet_signature(&self));
         self.signature = Some(signature.unwrap());
+    }
+
+    pub fn verify_sign(&self, chai_id: u64) -> bool {
+        if self.signature.is_none() {
+            return false;
+        }
+        let payload = self.signature_payload();
+        recover_bytes(self.signature.as_ref().unwrap(), &payload).is_ok()
     }
 
     pub fn set_signature(&mut self, sign: &Signature) {
@@ -115,7 +122,7 @@ struct TransactionSignature {
     amount: u64,
     #[serde(default)]
     payload: Vec<u8>,
-    #[serde(rename = "sign", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "sign")]
     signature: Option<Signature>,
 }
 
@@ -154,6 +161,11 @@ impl TransactionSignature {
     }
 }
 
+
+pub fn merkle_root_transactions(transactions: Vec<Transaction>) -> Hash {
+    merkle_tree_root(transactions)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,7 +177,7 @@ mod tests {
     fn transaction_sign() {
         let keypair = Random.generate().unwrap();
         let mut tx = Transaction::new(10, Address::from(100), 89, 10, 90, vec![10, 39, 76, 31]);
-        tx.sign(&100, keypair.secret());
+        tx.sign(100, keypair.secret());
         let hash = tx.hash();
         writeln!(io::stdout(), "hash: {:?}", hash).unwrap();
         writeln!(io::stdout(), "{}", tx.pretty_json()).unwrap();

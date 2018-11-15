@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 use std::any::{Any, TypeId};
 
-use super::types::{Proposal,Height, View};
+use super::types::{Proposal, View};
+use crate::types::Height;
 
 #[derive(Debug)]
 pub enum RequestEventType{
@@ -9,11 +10,8 @@ pub enum RequestEventType{
     Msg,
 }
 
-pub struct RequestEvent<T: Proposal> {
-    proposal: T,
-}
-
-impl<T: Proposal> RequestEvent<T> {
+pub struct RequestEvent{
+    proposal: Proposal,
 }
 
 fn is_view<T: ?Sized + Any>(_s: &T) -> bool {
