@@ -30,6 +30,8 @@ pub struct Header {
     pub time: Timestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub votes: Option<Votes>,
     hash_cache: Option<Hash>,
 }
 
@@ -49,6 +51,7 @@ impl Header {
         gas_limit: Gas,
         gas_used: Gas,
         tm: Timestamp,
+        votes: Option<Votes>,
         extra: Option<Vec<u8>>,
     ) -> Self {
         Header {
@@ -64,6 +67,7 @@ impl Header {
             gas_used,
             time: tm,
             extra,
+            votes,
             hash_cache: None,
         }
     }
@@ -82,6 +86,7 @@ impl Header {
             gas_used: 0,
             time: 0,
             extra: None,
+            votes: None,
             hash_cache: None,
         }
     }
@@ -92,18 +97,16 @@ pub struct Block {
     header: Header,
     #[serde(rename = "tx")]
     transactions: Vec<Transaction>,
-    votes: Option<Votes>, // the first vote is proposer's vote
 }
 
 implement_cryptohash_traits! {Block}
 implement_storagevalue_traits! {Block}
 
 impl Block {
-    pub fn new(header: Header, txs: Vec<Transaction>, votes: Option<Votes>) -> Self {
+    pub fn new(header: Header, txs: Vec<Transaction>) -> Self {
         Block {
             header,
             transactions: txs,
-            votes,
         }
     }
 
@@ -123,11 +126,11 @@ impl Block {
     }
 
     pub fn votes(&self) -> Option<&Votes> {
-        self.votes.as_ref()
+        self.header.votes.as_ref()
     }
 
     pub fn mut_votes(&mut self) -> Option<&mut Votes> {
-        self.votes.as_mut()
+        self.header.votes.as_mut()
     }
 }
 

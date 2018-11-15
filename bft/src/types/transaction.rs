@@ -1,5 +1,3 @@
-use super::Gas;
-
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::signature::*;
 use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
@@ -12,6 +10,9 @@ use serde_json::to_string;
 
 use std::borrow::Cow;
 use std::io::Cursor;
+
+use crate::common::merkle_tree_root;
+use super::Gas;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Transaction {
@@ -158,6 +159,11 @@ impl TransactionSignature {
         signature.serialize(&mut Serializer::new(&mut buf)).unwrap();
         buf
     }
+}
+
+
+pub fn merkle_root_transactions(transactions: Vec<Transaction>) -> Hash {
+    merkle_tree_root(transactions)
 }
 
 #[cfg(test)]

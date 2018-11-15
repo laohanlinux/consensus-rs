@@ -1,9 +1,23 @@
-use sha3::{Sha3_256, Digest};
 use bigint::U256;
 use rand::random;
+use sha3::{Digest, Sha3_256};
 
-use std::fmt::{self, Display};
 use std::env;
+use std::fmt::{self, Display};
+
+use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
+use cryptocurrency_kit::merkle_tree::MerkleTree;
+use cryptocurrency_kit::storage::values::StorageValue;
+
+pub fn merkle_tree_root<T: StorageValue>(input: Vec<T>) -> Hash {
+    let mut v: Vec<Vec<_>> = vec![];
+    for item in input {
+        let bytes = item.into_bytes();
+        v.push(bytes);
+    }
+    let root = MerkleTree::new_merkle_tree(v).root.unwrap();
+    Hash::from_slice(&root.data).unwrap()
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct HexBytes {
@@ -11,7 +25,7 @@ pub struct HexBytes {
 }
 
 impl HexBytes {
-    pub fn bytes(&self) -> &[u8;32] {
+    pub fn bytes(&self) -> &[u8; 32] {
         &self.inner
     }
 
@@ -32,12 +46,16 @@ pub fn as_256(data: &[u8]) -> U256 {
     U256::from_big_endian(data)
 }
 
-pub fn u256_hash(input: &[u8]) -> Vec<u8>{
+pub fn u256_hash(input: &[u8]) -> Vec<u8> {
     let mut hasher = Sha3_256::default();
     hasher.input(input);
     hasher.result().to_vec()
 }
 
 pub fn random_dir() -> Box<String> {
-    Box::new(format!("{}{}", env::temp_dir().to_str().unwrap(), random::<u64>()))
+    Box::new(format!(
+        "{}{}",
+        env::temp_dir().to_str().unwrap(),
+        random::<u64>()
+    ))
 }

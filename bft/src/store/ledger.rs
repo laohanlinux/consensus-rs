@@ -23,7 +23,7 @@ impl LastMeta {
             0,
             Hash::zero(),
             Header::zero_header(),
-            Block::new(Header::zero_header(), vec![], None),
+            Block::new(Header::zero_header(), vec![]),
         )
     }
 
