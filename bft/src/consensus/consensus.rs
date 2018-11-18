@@ -8,11 +8,11 @@ struct BftConfig {
 }
 
 pub trait Engine {
-    fn start(&mut self) -> Result<(), ()>;
-    fn stop(&mut self) -> Result<(), ()>;
-    fn author(&self, header: &Header) -> Result<Address, ()>;
-    fn verify_header(&self, header: &Header, seal: bool) -> Result<(), ()>;
-    fn verify_seal(&self, header: &Header) -> Result<(), ()>;
-    fn prepare(&mut self, header: &Header) -> Result<(), ()>;
-    fn finalize(&mut self, header: &Header) -> Result<(), ()>;
+    fn start(&mut self) -> Result<(), String>;
+    fn stop(&mut self) -> Result<(), String>;
+    fn author(&self, header: &Header) -> Result<Address, String>;
+    fn verify_header(&self, header: &Header, seal: bool) -> Result<(), String>;
+    fn verify_seal(&self, header: &Header) -> Result<(), String>;
+    fn prepare(&mut self, header: &mut Header) -> Result<(), String>;
+    fn finalize(&mut self, header: &mut Header) -> Result<(), String>;
 }

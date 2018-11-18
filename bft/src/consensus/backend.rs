@@ -1,21 +1,33 @@
 use lru_time_cache::LruCache;
 
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH};
+use chrono::{Local, Duration};
+use chrono_humanize::HumanTime;
+use crossbeam::crossbeam_channel::Sender;
+use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian, LittleEndian};
+use cryptocurrency_kit::crypto::{hash, HASH_SIZE, CryptoHash, Hash, EMPTY_HASH};
 use cryptocurrency_kit::ethkey::keccak::Keccak256;
 use cryptocurrency_kit::ethkey::{
     sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
 };
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use cryptocurrency_kit::common::to_keccak;
 
-use super::config::Config;
-use super::types::Proposal;
-use super::validator::{ImplValidatorSet, ValidatorSet};
-use common::merkle_tree_root;
-use store::ledger::Ledger;
-use types::block::Header;
-use types::transaction::Transaction;
-use types::{Height, Validator, EMPTY_ADDRESS};
+use std::sync::{Arc, RwLock};
+
+use super::{
+    config::Config,
+    types::Proposal,
+    validator::{ImplValidatorSet, ValidatorSet},
+    consensus::Engine,
+};
+
+use crate::{
+    common::merkle_tree_root,
+    store::ledger::Ledger,
+    types::block::{Header, Block},
+    types::transaction::Transaction,
+    types::{Height, Validator, EMPTY_ADDRESS},
+    protocol::MessageType,
+};
 
 pub trait Backend {
     /// address is the current validator's address
@@ -29,7 +41,7 @@ pub trait Backend {
     /// gossip sends a message to all validators (exclude self)
     fn gossip(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
     /// commit a proposal with seals
-    fn commit(&mut self, proposal: &Proposal, seals: &[&[u8]]) -> Result<(), ()>;
+    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), ()>;
     /// verifies the proposal. If a err_future_block error is returned,
     /// the time difference of the proposal and current time is also returned.
     fn verify(&self, proposal: &Proposal) -> Result<(), String>;
@@ -49,6 +61,8 @@ struct ImplBackend<T: ValidatorSet> {
     key_pair: KeyPair,
     inbound_cache: LruCache<Hash, String>,
     outbound_cache: LruCache<Hash, String>,
+    proposed_block_hash: Hash, // proposal hash it from local node
+    commit_channel: Sender<Block>,
     ledger: Arc<RwLock<Ledger>>,
     config: Config,
 }
@@ -79,7 +93,23 @@ where
     }
 
     /// TODO
-    fn commit(&mut self, proposal: &Proposal, seals: &[&[u8]]) -> Result<(), ()> {
+    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), ()> {
+        // write seal into block
+        proposal.set_seal(seals);
+        let block = proposal.block();
+        // 1. if the proposed and committed blocks are the same, send the proposed hash
+        //  to commit channel, which is being watched inside the engine.Seal() function.
+        // 2. otherwise, we try to insert the block.
+        // 3. if success, the `chain head event` event will be broadcasted, try to build
+        //  next block and the previous seal() will be stopped.
+        // 4. otherwise, a error will be returned and a round change event will be fired.
+        if self.proposed_block_hash == block.hash() {
+            let block = block.clone();
+            self.commit_channel.send(block).unwrap();
+        }
+        info!("committed a new block, hash:{}, height:{}, proposer:{}", block.hash().short(), block.height(), block.coinbase());
+
+        // TODO add block broadcast
         Err(())
     }
 
@@ -156,11 +186,26 @@ where
     }
 }
 
-impl<T> ImplBackend<T>
+impl<T> Engine for ImplBackend<T>
 where
-    T: ValidatorSet,
+    T: ValidatorSet
 {
+
+    fn start(&mut self) -> Result<(), String>{
+            Ok(())
+    }
+
+    fn stop(&mut self) -> Result<(), String>{
+        Ok(())
+    }
+
+    // return the proposer
+    fn author(&self, header: &Header) -> Result<Address, String> {
+        Ok(header.proposer.clone())
+    }
+
     fn verify_header(&self, header: &Header, seal: bool) -> Result<(), String> {
+        use std::io::{Read, Write, Cursor};
         if header.height == 0 {
             return Err("heigt is invalid".to_string());
         }
@@ -177,11 +222,71 @@ where
             return Err("Invalid timestamp".to_string());
         }
 
-        let votes = header.votes.as_ref().ok_or("lack votes".to_string())?;
+        // check votes
+        {
+            let votes = header.votes.as_ref().ok_or("lack votes".to_string())?;
+            let op_code = MessageType::Committed;
+            let digest = header.hash();
+            let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
+            input.write_u8(op_code as u8).unwrap();
+            input.write(digest.as_ref()).unwrap();
+            let buffer = input.into_inner();
+            let digest:Hash = hash(buffer);
+            if votes.verify_signs(digest, |validator| { self.validator_set.get_by_address(validator).is_some() }) == false {
+                return Err("invalid votes".to_string());
+            }
+            let maj32 = self.validator_set.two_thirds_majority();
+            if maj32 + 1 > votes.len() {
+                return Err("lack votes".to_string());
+            }
+        }
 
         // FIXME add more check
         Ok(())
     }
+
+    fn verify_seal(&self, header: &Header) -> Result<(), String> {
+        if header.height == 0 {
+            return Err("unkown block".to_string());
+        }
+        let proposer = header.proposer;
+        self.validator_set.get_by_address(proposer).ok_or("proposer is not validators".to_string()).map(|_|())
+    }
+
+    fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
+        let parent_header = {
+            let ledger = self.ledger.read().unwrap();
+            ledger.get_header_by_height(header.height -1).ok_or("not found parent block for the header".to_string())?
+        };
+        // TODO maybe reset validator
+
+        header.votes = None;
+        header.time = parent_header.time + self.config.block_period;
+        let now = Local::now().timestamp() as u64;
+        if header.time < now {
+            header.time = now;
+        }
+
+        self.proposed_block_hash = header.hash();
+        Ok(())
+    }
+
+    // Finalize runs any post-transaction state modifications (e.g. block rewards)
+    // and assembles the final block.
+    //
+    // Note, the block header and state database might be updated to reflect any
+    // consensus rules that happen at finalization (e.g. block rewards).
+    fn finalize(&mut self, header: &mut Header) -> Result<(), String> {
+        self.proposed_block_hash = EMPTY_HASH;
+        Ok(())
+    }
+}
+
+impl<T> ImplBackend<T>
+where
+    T: ValidatorSet,
+{
+
 
     fn verify_committed(&self, header: &Header) {
     }

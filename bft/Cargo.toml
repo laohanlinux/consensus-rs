@@ -7,11 +7,13 @@ license = "GPL-3.0"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+chrono-humanize = "0.0.11"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 runtime-fmt = "*"
 bigint = "4.4.1"
+byteorder = "1"
 rand = "0.5"
 hex = "*"
 sha3 = "0.7.3"
@@ -19,9 +21,13 @@ rlp = "0.2.4"
 rmp = "*"
 rmp-serde  = "*"
 lazy_static = "1.1.0"
+crossbeam = {git = "https://github.com/crossbeam-rs/crossbeam.git"}
 ethereum-types = "*"
 lru_time_cache = "0.8.0"
 eth-secp256k1 = { git = "https://github.com/paritytech/rust-secp256k1" }
 cryptocurrency-kit = {git = "https://github.com/laohanlinux/cryptocurrency-kit-rs.git"}
 kvdb-rocksdb = {path = "./parity-common/kvdb-rocksdb"}
 kvdb = {path = "./parity-common/kvdb"}
+log = "0.4"
+priority-queue = "0.5.2"
+actix = "0.7"

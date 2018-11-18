@@ -36,7 +36,7 @@ impl CryptoHash for Transaction {
     }
 }
 
-implement_storagevalue_traits!{Transaction}
+implement_storagevalue_traits! {Transaction}
 
 impl Transaction {
     pub fn new(
