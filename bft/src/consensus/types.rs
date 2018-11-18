@@ -1,4 +1,5 @@
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
+use cryptocurrency_kit::ethkey::Signature;
 use cryptocurrency_kit::storage::values::StorageValue;
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
@@ -11,6 +12,7 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::io::Cursor;
 
 use types::{Height, block::Block};
+use types::votes::Votes;
 
 pub type Round = u64;
 
@@ -22,11 +24,22 @@ impl Proposal {
         Proposal(block)
     }
 
+    pub fn set_seal(&mut self, seals: Vec<Signature>) {
+        self.0.add_votes(seals);
+    }
+
     pub fn copy(&self) -> Proposal {
         let block = self.0.clone();
         Proposal(block)
     }
+
+    pub fn block(&self) -> &Block {
+        &self.0
+    }
 }
+
+implement_cryptohash_traits! {Proposal}
+implement_storagevalue_traits! {Proposal}
 
 #[derive(Debug)]
 pub struct Request<T: CryptoHash + StorageValue> {
@@ -66,6 +79,30 @@ impl PartialOrd for View {
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Subject {
+    pub view: View,
+    pub digest: Hash,
+}
+
+implement_storagevalue_traits! {Subject}
+implement_cryptohash_traits! {Subject}
+
+impl Display for Subject {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "height:{}, round: {}, digest: {}", self.view.height, self.view.round, self.digest.short())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PrePrepare {
+    pub view: View,
+    pub proposal: Proposal,
+}
+
+implement_cryptohash_traits! {PrePrepare}
+implement_storagevalue_traits! {PrePrepare}
 
 #[cfg(test)]
 mod test {

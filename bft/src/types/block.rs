@@ -19,9 +19,9 @@ use super::{Bloom, Difficulty, Gas, Height, Timestamp};
 pub struct Header {
     pub prev_hash: Hash,
     pub proposer: Address,
-    pub root: Hash,
-    pub tx_hash: Hash,
-    pub receipt_hash: Hash,
+    pub root: Hash, // state root
+    pub tx_hash: Hash, // transactions root
+    pub receipt_hash: Hash, // receipt_root
     pub bloom: Bloom,
     pub difficulty: Difficulty,
     pub height: Height,
@@ -110,6 +110,10 @@ impl Block {
         }
     }
 
+    pub fn hash(&self) -> Hash {
+        self.header.hash()
+    }
+
     pub fn header(&self) -> &Header {
         &self.header
     }
@@ -123,6 +127,12 @@ impl Block {
     pub fn coinbase(&self) -> Address {
         let coinbase = self.header.proposer;
         coinbase
+    }
+
+    pub fn add_votes(&mut self, signatures: Vec<Signature>) {
+        let ref mut header = self.header;
+        let mut votes = header.votes.get_or_insert(Votes::new(vec![]));
+        votes.add_votes(&signatures);
     }
 
     pub fn votes(&self) -> Option<&Votes> {

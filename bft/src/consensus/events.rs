@@ -27,6 +27,9 @@ pub struct MessageEvent {
 #[derive(Debug)]
 pub struct FinalCommittedEvent{}
 
+#[derive(Debug, Message)]
+pub struct TimerEvent{}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -40,9 +43,9 @@ mod test {
         }
     }
 
-    impl Proposal for testView {
-        fn height(&self) -> Height {9}
-    }
+//    impl Proposal for testView {
+//        fn height(&self) -> Height {9}
+//    }
 
     #[test]
     fn test_type_of(){
