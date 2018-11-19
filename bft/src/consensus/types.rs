@@ -46,7 +46,7 @@ pub struct Request<T: CryptoHash + StorageValue> {
     proposal: T,
 }
 
-#[derive(Debug, Clone, Copy, Eq, Deserialize, Serialize)]
+#[derive(Default, Debug, Clone, Copy, Eq, Deserialize, Serialize)]
 pub struct View {
     pub round: u64,
     pub height: Height,

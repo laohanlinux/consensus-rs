@@ -15,13 +15,13 @@ pub enum Op {
     Interval,
 }
 
-pub struct Timer<T> where T: ValidatorSet + 'static {
+pub struct Timer{
     name: String,
     pub interval: Duration,
-    pub pid: Addr<Core<T>>,
+    pub pid: Addr<Core>,
 }
 
-impl<T> Actor for Timer<T> where T: ValidatorSet + 'static{
+impl Actor for Timer{
     type Context = Context<Self>;
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("{}'s timer actor has started", self.name);
@@ -29,7 +29,7 @@ impl<T> Actor for Timer<T> where T: ValidatorSet + 'static{
     }
 }
 
-impl<T> Handler<Op> for Timer<T> where T: ValidatorSet + 'static {
+impl Handler<Op> for Timer {
     type Result = ();
     fn handle(&mut self, msg: Op, ctx: &mut Self::Context) -> Self::Result {
         match msg {
@@ -40,8 +40,8 @@ impl<T> Handler<Op> for Timer<T> where T: ValidatorSet + 'static {
     }
 }
 
-impl<T> Timer<T> where T: ValidatorSet {
-    pub fn new(name: String, interval: Duration, pid: Addr<Core<T>>) -> Self {
+impl Timer{
+    pub fn new(name: String, interval: Duration, pid: Addr<Core>) -> Self {
         Timer { name, interval, pid }
     }
 }

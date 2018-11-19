@@ -20,7 +20,7 @@ use super::core::Core;
 
 struct BackLogActor {
     qp: HashMap<Address, PriorityQueue<GossipMessage, i64>>,
-    core: Addr<Core<ImplValidatorSet>>,
+    core: Addr<Core>,
 }
 
 

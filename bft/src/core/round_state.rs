@@ -9,36 +9,35 @@ use crate::{
 };
 
 // it is not safe
-pub struct RoundState<T: CryptoHash + StorageValue> {
+pub struct RoundState {
     round: Round,
     height: Height,
-    preprepare: Option<PrePrepare>,
     // 提案
+    pub preprepare: Option<PrePrepare>,
     prepares: MessageManage,
     commits: MessageManage,
-    pending_request: Option<Request<T>>,
+    pub pending_request: Option<Request<Proposal>>,
     lock_hash: Option<Hash>, // 锁hash
 }
 
-impl<T> RoundState<T>
-    where
-        T: CryptoHash + StorageValue,
+
+impl RoundState
 {
-//    pub(crate) fn new_round_state<V: ValidatorSet>(view: View, vals: V,
-//                                                   lock_hash: Option<Hash>,
-//                                                   preprepare: Option<PrePrepare>,
-//                                                   pending_request: Option<Request<T>>)
-//        -> Self {
-//        RoundState{
-//            round: view.round,
-//            height: view.height,
-//            preprepare: preprepare,
-//            prepares: MessageManage::new(view.clone(), vals as ImplValidatorSet),
-//            commits: MessageManage::new(view.clone(), vals),
-//            pending_request: pending_request,
-//            lock_hash: lock_hash,
-//        }
-//    }
+    pub(crate) fn new_round_state(view: View, vals: ImplValidatorSet,
+                                                   lock_hash: Option<Hash>,
+                                                   preprepare: Option<PrePrepare>,
+                                                   pending_request: Option<Request<Proposal>>)
+        -> Self {
+        RoundState{
+            round: view.round,
+            height: view.height,
+            preprepare: preprepare,
+            prepares: MessageManage::new(view.clone(), vals.clone()),
+            commits: MessageManage::new(view.clone(), vals.clone()),
+            pending_request: pending_request,
+            lock_hash: lock_hash,
+        }
+    }
 
     pub(crate) fn get_prepare_or_commit_size(&self) -> usize {
         let mut result = self.prepares.len() + self.commits.len();
