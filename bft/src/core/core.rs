@@ -11,9 +11,10 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::io::Cursor;
-
+use std::any::{Any, TypeId};
 use std::hash::Hash as StdHash;
 use std::time::Duration;
+
 
 use crate::{
     types::Validator,
@@ -38,13 +39,13 @@ pub struct Core {
     state: State,
 
     validators: ImplValidatorSet,
-    current_state: RoundState,
+    current_state: RoundState, // 轮次的状态，存储本轮次的消息
 
     wait_round_change: bool,
     future_prepprepare_timer: Addr<Timer>,
     round_change_timer: Addr<Timer>,
 
-    backend: Box<Backend>,
+    backend: Box<Backend<ValidatorsType=ImplValidatorSet>>,
 }
 
 impl Actor for Core
@@ -106,43 +107,46 @@ impl Core
         } else if last_height >= self.current_state.height() {
             // 本地的高度等于当前正在做共识的高度，证明网络上已经有新的高度了
             trace!("catchup latest proposal");
-            return
+            return;
         } else if (last_height + 1) == self.current_state.height() {
             // 正在共识
             if round == 0 {
                 // 同一轮次被调用了两次，不应该出现这种情况
                 trace!("same height and round, don't need to start new round");
-                return
-            }else if round < self.current_state.round() {
+                return;
+            } else if round < self.current_state.round() {
                 // 旧轮次数据
                 trace!("new round should not be smaller than current round");
                 return;
             }
-
+            // current.round >= round
             round_change = true;
-        }else {
+        } else {
             // 收到了低轮次的消息，不应该出现这种情况
             trace!("new height should larger than current height");
-            return
+            return;
         }
 
         trace!("ready to update round");
         let mut new_view: View = Default::default();
 
         if round_change {
-            new_view = View{
+            new_view = View {
                 height: self.current_state.height(),
                 round: self.current_state.round(),
             };
-        }else {
-            new_view = View{
+        } else {
+            new_view = View {
                 height: last_height + 1,
                 round: 0,
             };
             // FIXME 根据高度获取validators
-//            self.validators = self.backend.validators();
-//            self.valid?ators
+            self.validators = self.backend.validators(last_height + 1).clone();
         }
+
+
+        // TODO 继承上一次的Round change prove
+
     }
 
     // 处理新的round

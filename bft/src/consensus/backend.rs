@@ -30,10 +30,11 @@ use crate::{
 };
 
 pub trait Backend {
+    type ValidatorsType;
     /// address is the current validator's address
     fn address(&self) -> Address;
     /// validators returns a set of current validator
-    fn validators(&self) -> &ValidatorSet;
+    fn validators(&self, height: Height) -> &Self::ValidatorsType;
     ///TODO
     fn event_mux(&self);
     /// broadcast sends a message to all validators (include itself)
@@ -51,31 +52,31 @@ pub trait Backend {
     fn last_proposal(&self) -> Result<Proposal, ()>;
     fn has_proposal(&self, hash: &Hash, height: Height) -> bool;
     fn get_proposer(&self, height: Height) -> Address;
-    fn parent_validators(&self, proposal: &Proposal) -> &ValidatorSet;
+    fn parent_validators(&self, proposal: &Proposal) -> &Self::ValidatorsType;
     fn has_bad_proposal(&self, hash: Hash) -> bool;
 }
 
-struct ImplBackend<T: ValidatorSet> {
+struct ImplBackend {
     validaor: Validator,
-    validator_set: T,
+    validator_set: ImplValidatorSet,
     key_pair: KeyPair,
     inbound_cache: LruCache<Hash, String>,
     outbound_cache: LruCache<Hash, String>,
-    proposed_block_hash: Hash, // proposal hash it from local node
+    proposed_block_hash: Hash,
+    // proposal hash it from local node
     commit_channel: Sender<Block>,
     ledger: Arc<RwLock<Ledger>>,
     config: Config,
 }
 
-impl<T> Backend for ImplBackend<T>
-where
-    T: ValidatorSet,
+impl Backend for ImplBackend
 {
+    type ValidatorsType = ImplValidatorSet;
     fn address(&self) -> Address {
         *self.validaor.address()
     }
 
-    fn validators(&self) -> &ValidatorSet {
+    fn validators(&self, _: Height) -> &ImplValidatorSet {
         &self.validator_set
     }
 
@@ -176,7 +177,7 @@ where
     }
 
     // TODO
-    fn parent_validators(&self, proposal: &Proposal) -> &ValidatorSet {
+    fn parent_validators(&self, proposal: &Proposal) -> &Self::ValidatorsType {
         &self.validator_set
     }
 
@@ -186,16 +187,13 @@ where
     }
 }
 
-impl<T> Engine for ImplBackend<T>
-where
-    T: ValidatorSet
+impl Engine for ImplBackend
 {
-
-    fn start(&mut self) -> Result<(), String>{
-            Ok(())
+    fn start(&mut self) -> Result<(), String> {
+        Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), String>{
+    fn stop(&mut self) -> Result<(), String> {
         Ok(())
     }
 
@@ -231,7 +229,7 @@ where
             input.write_u8(op_code as u8).unwrap();
             input.write(digest.as_ref()).unwrap();
             let buffer = input.into_inner();
-            let digest:Hash = hash(buffer);
+            let digest: Hash = hash(buffer);
             if votes.verify_signs(digest, |validator| { self.validator_set.get_by_address(validator).is_some() }) == false {
                 return Err("invalid votes".to_string());
             }
@@ -250,13 +248,13 @@ where
             return Err("unkown block".to_string());
         }
         let proposer = header.proposer;
-        self.validator_set.get_by_address(proposer).ok_or("proposer is not validators".to_string()).map(|_|())
+        self.validator_set.get_by_address(proposer).ok_or("proposer is not validators".to_string()).map(|_| ())
     }
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
         let parent_header = {
             let ledger = self.ledger.read().unwrap();
-            ledger.get_header_by_height(header.height -1).ok_or("not found parent block for the header".to_string())?
+            ledger.get_header_by_height(header.height - 1).ok_or("not found parent block for the header".to_string())?
         };
         // TODO maybe reset validator
 
@@ -279,15 +277,5 @@ where
     fn finalize(&mut self, header: &mut Header) -> Result<(), String> {
         self.proposed_block_hash = EMPTY_HASH;
         Ok(())
-    }
-}
-
-impl<T> ImplBackend<T>
-where
-    T: ValidatorSet,
-{
-
-
-    fn verify_committed(&self, header: &Header) {
     }
 }
