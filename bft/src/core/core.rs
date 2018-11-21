@@ -15,11 +15,10 @@ use std::any::{Any, TypeId};
 use std::hash::Hash as StdHash;
 use std::time::Duration;
 
-
 use crate::{
     types::Validator,
     consensus::events::TimerEvent,
-    consensus::types::{Round, View, Subject, Proposal},
+    consensus::types::{Round, View, Request as CSRequest, Subject, Proposal},
     consensus::config::Config,
     consensus::backend::Backend,
     consensus::validator::{Validators, ValidatorSet, ImplValidatorSet},
@@ -29,6 +28,8 @@ use super::{
     types::State,
     timer::{Timer, Op},
     round_state::RoundState,
+    round_change_set::RoundChangeSet,
+    preprepare::HandlePreprepare,
 };
 
 pub struct Core {
@@ -39,7 +40,9 @@ pub struct Core {
     state: State,
 
     validators: ImplValidatorSet,
-    current_state: RoundState, // 轮次的状态，存储本轮次的消息
+    current_state: RoundState,
+    // 轮次的状态，存储本轮次的消息
+    round_change_set: RoundChangeSet<ImplValidatorSet>, // store round change messages
 
     wait_round_change: bool,
     future_prepprepare_timer: Addr<Timer>,
@@ -88,6 +91,19 @@ impl Core
         }
 
         Ok(())
+    }
+
+    // enter commit state
+    pub fn commit(&mut self) {
+        self.set_state(State::Committed);
+        let proposal = self.current_state.proposal().unwrap();
+        let mut committed_seals = Vec::with_capacity(self.current_state.commits.len());
+        self.current_state.commits.values().iter().for_each(|v| {
+            committed_seals.push(v.signature.as_ref().unwrap().clone());
+        });
+        let has_more_than_maj23 = self.validators.two_thirds_majority() + 1 <= committed_seals.len();
+        assert!(has_more_than_maj23);
+        // TODO commit
     }
 
     // 启动新的轮次，触发的条件
@@ -144,9 +160,47 @@ impl Core
             self.validators = self.backend.validators(last_height + 1).clone();
         }
 
+        assert_ne!(self.validators.size(), 0, "validators'size should be more than zero");
+        // start new round timer
+        let max_round = self.round_change_set.max_round(self.validators.two_thirds_majority() + 1);
 
         // TODO 继承上一次的Round change prove
+        if round > 0 {
+            // round change
+            // TODO prove tree
+            self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
+        } else {
+            self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
+        }
 
+        // New snapshot for new round
+        self.update_round_state(new_view, self.validators.clone(), round_change);
+        // calc new proposer
+        self.validators.calc_proposer(&last_proposal.block().hash(), last_height, new_view.round);
+
+        // reset state
+        self.wait_round_change = false;
+        // set state into State::AcceptRequest
+        // NOTIC: the next step should set request atomic
+        self.set_state(State::AcceptRequest);
+
+        // if current validator is proposer
+        if round_change && self.validators.is_proposer(self.address) {
+            // if it is locked, propose the old proposal, if we have pending request. propose pending request
+            if self.current_state.is_locked() {
+                // c.current_state.proposal has locked by previous proposer, see update_round_state
+                let r = CSRequest::new(self.current_state.proposal().unwrap().clone());
+                self.send_preprepare(&r);
+                // TODO
+            } else {
+                // TODO
+                self.send_preprepare(self.current_state.pending_request.as_ref().unwrap());
+            }
+        }
+
+        // reset new round change timer
+        self.new_round_change_timer();
+        info!("after start new round, new round: {}", self.current_state.round());
     }
 
     // 处理新的round
@@ -197,7 +251,7 @@ impl Core
 
     fn stop_round_change_timer(&mut self) {
         self.round_change_timer.try_send(Op::Stop);
-        info!("Stop round change timer");
+        info!("stop round change timer");
     }
 
     fn stop_timer(&mut self) {
@@ -206,6 +260,7 @@ impl Core
     }
 
     fn new_round_change_timer(&mut self) {
+        trace!("start new round timer");
         // stop old timer
         self.round_change_timer.try_send(Op::Stop);
         // start new timer

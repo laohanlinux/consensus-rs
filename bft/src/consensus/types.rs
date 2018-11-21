@@ -43,7 +43,20 @@ implement_storagevalue_traits! {Proposal}
 
 #[derive(Debug)]
 pub struct Request<T: CryptoHash + StorageValue> {
-    proposal: T,
+    pub proposal: T,
+}
+
+impl<T> Request<T>
+    where T: CryptoHash + StorageValue {
+    pub fn new(proposal: T) -> Request<T> {
+        Request {
+            proposal
+        }
+    }
+
+    pub fn proposal(&self) -> &T {
+        &self.proposal
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, Deserialize, Serialize)]

@@ -14,9 +14,9 @@ pub struct RoundState {
     height: Height,
     // 提案
     pub preprepare: Option<PrePrepare>,
-    prepares: MessageManage,
-    commits: MessageManage,
-    pub pending_request: Option<Request<Proposal>>,
+    pub prepares: MessageManage,
+    pub commits: MessageManage,
+    pub pending_request: Option<Request<Proposal>>, // 自己的提案
     lock_hash: Option<Hash>, // 锁hash
 }
 
