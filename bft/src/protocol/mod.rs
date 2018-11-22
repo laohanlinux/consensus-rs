@@ -26,10 +26,9 @@ implement_storagevalue_traits! {MessageType}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Deserialize, Serialize)]
 pub enum MessageType {
-    AcceptRequest = 1,
-    Preprepared,
-    Prepared,
-    Committed,
+    Preprepare = 1,
+    Prepare,
+    Commit,
     RoundChange,
 }
 

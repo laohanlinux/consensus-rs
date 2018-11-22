@@ -61,12 +61,19 @@ impl<T> Request<T>
 
 #[derive(Default, Debug, Clone, Copy, Eq, Deserialize, Serialize)]
 pub struct View {
-    pub round: u64,
+    pub round: Round,
     pub height: Height,
 }
 
 implement_cryptohash_traits! {View}
 implement_storagevalue_traits! {View}
+
+impl View {
+    pub fn new(height: Height, round: Round) -> Self {
+        View { height: height, round: round }
+    }
+}
+
 
 impl Display for View {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
@@ -101,6 +108,21 @@ pub struct Subject {
 
 implement_storagevalue_traits! {Subject}
 implement_cryptohash_traits! {Subject}
+
+impl Subject {
+    fn new(view: View, digest: Hash) -> Subject {
+        Subject{
+            view: view,
+            digest: digest,
+        }
+    }
+}
+
+impl From<&Vec<u8>> for Subject {
+    fn from(buffer: &Vec<u8>) -> Self {
+        Subject::from_bytes(Cow::from(buffer))
+    }
+}
 
 impl Display for Subject {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {

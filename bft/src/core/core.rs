@@ -37,7 +37,7 @@ pub struct Core {
     config: Config,
 
     address: Address,
-    state: State,
+    pub state: State,
 
     validators: ImplValidatorSet,
     current_state: RoundState,
@@ -106,75 +106,75 @@ impl Core
         // TODO commit
     }
 
+
+
     // 启动新的轮次，触发的条件
     // 1：新高度初始化
     // 2：锁定+2/3的 round change 票
-    pub(crate) fn start_new_round(&mut self, round: Round, pre_change_prove: &[u8]) {
-        trace!("before start new round");
-
-        let mut round_change = false;
+    pub(crate) fn start_new_zero_round(&mut self) {
+        trace!("before start zero round");
         let last_proposal = self.backend.last_proposal().unwrap();
         let last_proposer = last_proposal.block().coinbase();
         let last_height = last_proposal.block().height();
+        // TODO 增加判断，last_proposal == blockend.proposal_hash
+        let mut new_view: View = View::new(last_height + 1, 0);
+        // TODO 从backend 获取 backend.validator_set
+        self.validators = self.backend.validators(last_height + 1).clone();
+        self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
+        assert_ne!(self.validators.size(), 0, "validators'size should be more than zero");
 
-        if round == 0 {
-            // 新高度或者启动共识
-            trace!("init new round");
-        } else if last_height >= self.current_state.height() {
+        // New snapshot for new round
+        self.update_round_state(new_view, self.validators.clone(), false);
+        // calc new proposer
+        self.validators.calc_proposer(&last_proposal.block().hash(), last_height, new_view.round);
+
+        // reset state
+        self.wait_round_change = false;
+        // set state into State::AcceptRequest
+        // NOTIC: the next step should set request atomic
+        self.set_state(State::AcceptRequest);
+        // reset new round change timer
+        self.new_round_change_timer();
+        info!("after start zero round");
+    }
+
+    // has receive +2/3 round change
+    pub(crate) fn start_new_round(&mut self, round: Round, pre_change_prove: &[u8]) {
+        trace!("before start new round");
+        assert_ne!(round, 0, "zero round only call by self.start_new_zero_round");
+        let expect = round > self.current_state.round();
+        assert!(expect, "new round should not be smaller than or equal current round");
+        let last_proposal = self.backend.last_proposal().unwrap();
+        let last_proposer = last_proposal.block().coinbase();
+        let last_height = last_proposal.block().height();
+        {
+            let got = (last_height + 1) < self.current_state.height();
+            assert_eq!(got, false);
+        }
+
+        if last_height > self.current_state.height() {
             // 本地的高度等于当前正在做共识的高度，证明网络上已经有新的高度了
-            trace!("catchup latest proposal");
-            return;
-        } else if (last_height + 1) == self.current_state.height() {
-            // 正在共识
-            if round == 0 {
-                // 同一轮次被调用了两次，不应该出现这种情况
-                trace!("same height and round, don't need to start new round");
-                return;
-            } else if round < self.current_state.round() {
-                // 旧轮次数据
-                trace!("new round should not be smaller than current round");
-                return;
-            }
-            // current.round >= round
-            round_change = true;
-        } else {
-            // 收到了低轮次的消息，不应该出现这种情况
-            trace!("new height should larger than current height");
+            trace!("catchup latest proposal, it should be not happen");
             return;
         }
+        // last_height + 1 = current_state.height
 
-        trace!("ready to update round");
-        let mut new_view: View = Default::default();
-
-        if round_change {
-            new_view = View {
-                height: self.current_state.height(),
-                round: self.current_state.round(),
-            };
-        } else {
-            new_view = View {
-                height: last_height + 1,
-                round: 0,
-            };
-            // FIXME 根据高度获取validators
-            self.validators = self.backend.validators(last_height + 1).clone();
-        }
+        trace!("ready to update round, because round change");
+        let mut new_view = View::new(self.current_state.height(), self.current_state.round());
 
         assert_ne!(self.validators.size(), 0, "validators'size should be more than zero");
+
         // start new round timer
         let max_round = self.round_change_set.max_round(self.validators.two_thirds_majority() + 1);
 
         // TODO 继承上一次的Round change prove
-        if round > 0 {
-            // round change
-            // TODO prove tree
-            self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
-        } else {
-            self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
-        }
+        // round change
+        // TODO prove tree
+        self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
+
 
         // New snapshot for new round
-        self.update_round_state(new_view, self.validators.clone(), round_change);
+        self.update_round_state(new_view, self.validators.clone(), true);
         // calc new proposer
         self.validators.calc_proposer(&last_proposal.block().hash(), last_height, new_view.round);
 
@@ -185,7 +185,7 @@ impl Core
         self.set_state(State::AcceptRequest);
 
         // if current validator is proposer
-        if round_change && self.validators.is_proposer(self.address) {
+        if self.validators.is_proposer(self.address) {
             // if it is locked, propose the old proposal, if we have pending request. propose pending request
             if self.current_state.is_locked() {
                 // c.current_state.proposal has locked by previous proposer, see update_round_state
@@ -243,6 +243,15 @@ impl Core
     pub fn address(&self) -> Address {
         self.address
     }
+
+    pub fn mut_current_state(&mut self) -> &mut RoundState {
+        &mut self.current_state
+    }
+
+    pub fn val_set(&self) -> &ImplValidatorSet{
+        &self.validators
+    }
+
 
     fn stop_future_preprepare_timer(&mut self) {
         // stop old timer
