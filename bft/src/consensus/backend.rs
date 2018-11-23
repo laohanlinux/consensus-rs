@@ -223,7 +223,7 @@ impl Engine for ImplBackend
         // check votes
         {
             let votes = header.votes.as_ref().ok_or("lack votes".to_string())?;
-            let op_code = MessageType::Committed;
+            let op_code = MessageType::Commit;
             let digest = header.hash();
             let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
             input.write_u8(op_code as u8).unwrap();

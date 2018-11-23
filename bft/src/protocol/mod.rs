@@ -21,6 +21,14 @@ use consensus::types::View;
 use consensus::validator::{self, fn_selector, ImplValidatorSet, ValidatorSet};
 use types::EMPTY_ADDRESS;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
+pub enum State {
+    AcceptRequest = 1,
+    Preprepared,
+    Prepared,
+    Committed,
+}
+
 implement_cryptohash_traits! {MessageType}
 implement_storagevalue_traits! {MessageType}
 

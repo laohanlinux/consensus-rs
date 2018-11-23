@@ -41,11 +41,11 @@ impl Handler<GossipMessage> for BackLogActor {
     type Result = ();
     fn handle(&mut self, msg: GossipMessage, ctx: &mut Context<Self>) -> Self::Result {
         match &msg.code {
-            MessageType::Preprepared => {
+            MessageType::Preprepare => {
                 let msg_payload = msg.msg();
                 let preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(msg_payload));
                 let view = preprepare.view;
-                let weight = to_priority(MessageType::Preprepared, view);
+                let weight = to_priority(MessageType::Preprepare, view);
                 self.qp.entry(msg.address).or_insert_with(||{
                     let mut qp = PriorityQueue::new();
                     qp.push(msg, weight);

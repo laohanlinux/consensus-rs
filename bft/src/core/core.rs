@@ -1,7 +1,7 @@
 use actix::prelude::*;
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
-use cryptocurrency_kit::ethkey::Signature;
+use cryptocurrency_kit::ethkey::{KeyPair, Signature};
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,7 @@ use std::hash::Hash as StdHash;
 use std::time::Duration;
 
 use crate::{
+    protocol::{State, GossipMessage},
     types::Validator,
     consensus::events::TimerEvent,
     consensus::types::{Round, View, Request as CSRequest, Subject, Proposal},
@@ -25,7 +26,6 @@ use crate::{
     protocol::{GossipMessage as ProtoMessage, MessageType},
 };
 use super::{
-    types::State,
     timer::{Timer, Op},
     round_state::RoundState,
     round_change_set::RoundChangeSet,
@@ -37,6 +37,7 @@ pub struct Core {
     config: Config,
 
     address: Address,
+    pub keypair: KeyPair,
     pub state: State,
 
     validators: ImplValidatorSet,
@@ -106,6 +107,18 @@ impl Core
         // TODO commit
     }
 
+    // TODO do more things
+    pub fn finalize_message(&self, msg: &mut GossipMessage) -> Result<(), String> {
+        msg.address = self.address.clone();
+        Ok(())
+    }
+
+    pub fn broadcast(&self, msg: &GossipMessage) {
+        let mut copy_msg = msg.clone();
+        self.finalize_message( &mut copy_msg).unwrap();
+        let payload = copy_msg.clone().into_payload();
+        self.backend.broadcast(&self.validators, &payload).unwrap();
+    }
 
 
     // 启动新的轮次，触发的条件
@@ -244,11 +257,19 @@ impl Core
         self.address
     }
 
+    pub fn is_proposer(&self) -> bool {
+        self.validators.is_proposer(self.backend.address())
+    }
+
+    pub fn current_view(&self) -> View {
+        View::new(self.current_state.height(), self.current_state.round())
+    }
+
     pub fn mut_current_state(&mut self) -> &mut RoundState {
         &mut self.current_state
     }
 
-    pub fn val_set(&self) -> &ImplValidatorSet{
+    pub fn val_set(&self) -> &ImplValidatorSet {
         &self.validators
     }
 
