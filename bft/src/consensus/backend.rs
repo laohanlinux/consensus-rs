@@ -42,7 +42,7 @@ pub trait Backend {
     /// gossip sends a message to all validators (exclude self)
     fn gossip(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
     /// commit a proposal with seals
-    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), ()>;
+    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String>;
     /// verifies the proposal. If a err_future_block error is returned,
     /// the time difference of the proposal and current time is also returned.
     fn verify(&self, proposal: &Proposal) -> Result<(), String>;
@@ -94,9 +94,9 @@ impl Backend for ImplBackend
     }
 
     /// TODO
-    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), ()> {
+    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String> {
         // write seal into block
-        proposal.set_seal(seals);
+        proposal.set_seal(seals.clone());
         let block = proposal.block();
         // 1. if the proposed and committed blocks are the same, send the proposed hash
         //  to commit channel, which is being watched inside the engine.Seal() function.
@@ -108,10 +108,14 @@ impl Backend for ImplBackend
             let block = block.clone();
             self.commit_channel.send(block).unwrap();
         }
+        let mut block = proposal.block().clone();
+        let mut votes = block.mut_votes();
+        votes.unwrap().add_votes(&seals);
+        let mut ledger = self.ledger.write().unwrap();
+        ledger.add_block(&block);
         info!("committed a new block, hash:{}, height:{}, proposer:{}", block.hash().short(), block.height(), block.coinbase());
-
         // TODO add block broadcast
-        Err(())
+        Err("".to_string())
     }
 
     /// TODO

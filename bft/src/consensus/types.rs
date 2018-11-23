@@ -111,7 +111,7 @@ implement_cryptohash_traits! {Subject}
 
 impl Subject {
     fn new(view: View, digest: Hash) -> Subject {
-        Subject{
+        Subject {
             view: view,
             digest: digest,
         }
@@ -138,6 +138,12 @@ pub struct PrePrepare {
 
 implement_cryptohash_traits! {PrePrepare}
 implement_storagevalue_traits! {PrePrepare}
+
+impl PrePrepare {
+    pub fn new(view: View, proposal: Proposal) -> Self {
+        PrePrepare { view, proposal }
+    }
+}
 
 #[cfg(test)]
 mod test {

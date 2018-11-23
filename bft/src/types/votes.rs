@@ -1,16 +1,17 @@
-use cryptocurrency_kit::ethkey::{Address, Public, Signature};
-use cryptocurrency_kit::ethkey::{public_to_address, recover_bytes};
+use byteorder::WriteBytesExt;
+use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, HASH_SIZE};
 use cryptocurrency_kit::ethkey::Secret;
-use cryptocurrency_kit::crypto::Hash;
+use cryptocurrency_kit::ethkey::{public_to_address, recover_bytes};
+use cryptocurrency_kit::ethkey::{Address, Public, Signature};
 
-use crate::{
-    protocol::{MessageType, GossipMessage},
-
-};
+use crate::protocol::{GossipMessage, MessageType};
 
 const SIGN_OP_OFFSET: usize = 0;
 const SIGN_ROUND_OFFSET: usize = 1;
 const SIGN_PACKET_SIZE: usize = 9;
+
+use std::io::Cursor;
+use std::io::Write;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Votes(Vec<Signature>);
@@ -48,40 +49,52 @@ impl Votes {
     }
 
     pub fn verify_signs<F>(&self, digest: Hash, author: F) -> bool
-        where F: Fn(Address) -> bool
+    where
+        F: Fn(Address) -> bool,
     {
-        self.0.iter().all(|signature| {
-            match recover_bytes(signature, digest.as_ref()) {
+        self.0.iter().all(
+            |signature| match recover_bytes(signature, digest.as_ref()) {
                 Ok(ref public) => {
                     let address = public_to_address(public);
                     author(address)
                 }
                 Err(_) => false,
-            }
-        })
+            },
+        )
     }
 }
 
-//
-//pub fn decrypt_commit_bytes<T: AsRef<&[u8]>>(input: T, signture: &Signature) -> Result<Signature, String> {
-//    if input.as_ref().len() != SIGN_PACKET_SIZE {
-//        return Err("sign bytes size not equal SIGN_PACKET_SIZE".to_string());
-//    }
-//    let op_code = MessageType::Commit;
-//    let digest = header.hash();
-//    let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
-//    input.write_u8(op_code as u8).unwrap();
-//    input.write(digest.as_ref()).unwrap();
-//    let buffer = input.into_inner();
-//    let digest: Hash = hash(buffer);
-//    if votes.verify_signs(digest, |validator| { self.validator_set.get_by_address(validator).is_some() }) == false {
-//        return Err("invalid votes".to_string());
-//    }
-//    let maj32 = self.validator_set.two_thirds_majority();
-//    if maj32 + 1 > votes.len() {
-//        return Err("lack votes".to_string());
-//    }
-//    Ok(())
-//}
-//
-//pub fn encrypt_commit_bytes(digest: &Hash, secret: &Secret) {}
+pub fn decrypt_commit_bytes<T: AsRef<[u8]>>(
+    input: T,
+    signture: &Signature,
+) -> Result<Address, String> {
+    let input = input.as_ref();
+    if input.len() != SIGN_PACKET_SIZE {
+        return Err("sign bytes size not equal SIGN_PACKET_SIZE".to_string());
+    }
+    let op_code = MessageType::Commit;
+    let digest = hash(input);
+    let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
+    input.write_u8(op_code as u8).unwrap();
+    input.write(digest.as_ref()).unwrap();
+    let buffer = input.into_inner();
+    let digest: Hash = hash(buffer);
+    match recover_bytes(signture, digest.as_ref()) {
+        Ok(ref public) => {
+            let address = public_to_address(public);
+            return Ok(address);
+        },
+        Err(_) => {
+            return Err("recover commit sign failed".to_string());
+        },
+    }
+}
+
+pub fn encrypt_commit_bytes(digest: &Hash, secret: &Secret) -> Signature {
+    let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
+    input.write_u8(MessageType::Commit as u8).unwrap();
+    input.write(digest.as_ref()).unwrap();
+    let buffer = input.into_inner();
+    let digest = hash(buffer);
+    digest.sign(secret).unwrap()
+}
