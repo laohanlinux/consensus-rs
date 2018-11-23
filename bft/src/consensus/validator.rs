@@ -69,8 +69,8 @@ impl ImplValidatorSet {
 }
 
 impl ValidatorSet for ImplValidatorSet {
-    fn calc_proposer(&mut self, pre_blh: &Hash, height: Height, round: u64) {
-        let next_proposer = (self.selector)(pre_blh, height, round, &self.validators);
+    fn calc_proposer(&mut self, pre_blh: &Hash, pre_height: Height, round: u64) {
+        let next_proposer = (self.selector)(pre_blh, pre_height, round, &self.validators);
         self.proposer = Some(next_proposer);
     }
 
@@ -121,9 +121,9 @@ impl ValidatorSet for ImplValidatorSet {
             .validators
             .iter()
             .any(|validator| *validator.address() == address)
-        {
-            return false;
-        }
+            {
+                return false;
+            }
         self.validators.push(Validator::new(address));
         self.validators
             .sort_by_key(|validator| *validator.address());
@@ -250,7 +250,7 @@ mod tests {
                     round,
                     val_set.proposer.as_ref().unwrap()
                 )
-                .unwrap();
+                    .unwrap();
             })
         }
         writeln!(io::stdout(), "========================").unwrap();
@@ -273,7 +273,7 @@ mod tests {
                     0,
                     val_set.proposer.as_ref().unwrap()
                 )
-                .unwrap();
+                    .unwrap();
             })
         }
     }

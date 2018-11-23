@@ -21,15 +21,22 @@ use consensus::types::View;
 use consensus::validator::{self, fn_selector, ImplValidatorSet, ValidatorSet};
 use types::EMPTY_ADDRESS;
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
+pub enum State {
+    AcceptRequest = 1,
+    Preprepared,
+    Prepared,
+    Committed,
+}
+
 implement_cryptohash_traits! {MessageType}
 implement_storagevalue_traits! {MessageType}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Deserialize, Serialize)]
 pub enum MessageType {
-    AcceptRequest = 1,
-    Preprepared,
-    Prepared,
-    Committed,
+    Preprepare = 1,
+    Prepare,
+    Commit,
     RoundChange,
 }
 
@@ -122,8 +129,8 @@ impl GossipMessage {
 }
 
 pub struct MessageManage<RHS = ImplValidatorSet>
-where
-    RHS: ValidatorSet,
+    where
+        RHS: ValidatorSet,
 {
     view: View,
     val_set: RHS,
@@ -131,8 +138,8 @@ where
 }
 
 impl<V> std::fmt::Debug for MessageManage<V>
-where
-    V: ValidatorSet,
+    where
+        V: ValidatorSet,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "(view: {:?})", self.view)
@@ -140,8 +147,8 @@ where
 }
 
 impl<V> MessageManage<V>
-where
-    V: ValidatorSet,
+    where
+        V: ValidatorSet,
 {
     pub fn new(view: View, val_set: V) -> Self {
         MessageManage {
@@ -194,8 +201,8 @@ where
 pub(crate) fn to_priority(msg_code: MessageType, view: View) -> i64 {
     let mut priority: i64 = 0;
     if msg_code == MessageType::RoundChange {
-        priority =  (view.height * 1000) as i64;
-    }else {
+        priority = (view.height * 1000) as i64;
+    } else {
         priority = (view.height * 1000 + view.round + 10 + msg_code as u64) as i64;
     }
     -priority
@@ -250,7 +257,7 @@ mod tests {
                 round: 1,
                 height: 1,
             },
-            new_zero_validator_set(),
+         new_zero_validator_set(),
         );
 
         assert_eq!(msg.len(), 0);
@@ -258,7 +265,7 @@ mod tests {
             msg.view(),
             View {
                 round: 1,
-                height: 1
+                height: 1,
             }
         );
         assert_eq!(msg.values().len(), 0);
@@ -271,9 +278,9 @@ mod tests {
                     msg: vec![1, 3, 4],
                     address: 100.into(),
                     signature: None,
-                    commit_seal: None
+                    commit_seal: None,
                 })
-                .is_ok(),
+                    .is_ok(),
                 true
             );
             assert_eq!(
@@ -282,9 +289,9 @@ mod tests {
                     msg: vec![1, 3, 4],
                     address: 101.into(),
                     signature: None,
-                    commit_seal: None
+                    commit_seal: None,
                 })
-                .is_ok(),
+                    .is_ok(),
                 false
             );
         }
@@ -346,6 +353,18 @@ mod tests {
         ImplValidatorSet::new(&address_list, Box::new(fn_selector))
     }
 
+    fn new_zero_validator_set1() -> Box<ValidatorSet>
+    {
+        let mut address_list = vec![
+            Address::from(100),
+            Address::from(10),
+            Address::from(21),
+            Address::from(31),
+            Address::from(3),
+        ];
+        Box::new(ImplValidatorSet::new(&address_list, Box::new(fn_selector)))
+    }
+
     #[test]
     fn priority_queue() {
         use chrono::Local;
@@ -362,15 +381,15 @@ mod tests {
 
         {
             let mut qp = PriorityQueue::new();
-            (0..10).for_each(|idx: u8|{
+            (0..10).for_each(|idx: u8| {
                 let (mut message, _) = new_message();
                 message.msg.push(idx);
                 qp.push(message, idx);
             });
 
-            (0..10).for_each(|_|{
+            (0..10).for_each(|_| {
                 let (message, idx) = qp.pop().unwrap();
-               writeln!(io::stdout(), "idx: {}, {:#?}", idx, message).unwrap();
+                writeln!(io::stdout(), "idx: {}, {:#?}", idx, message).unwrap();
             });
         }
     }

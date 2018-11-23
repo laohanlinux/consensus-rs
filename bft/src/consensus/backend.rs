@@ -30,10 +30,11 @@ use crate::{
 };
 
 pub trait Backend {
+    type ValidatorsType;
     /// address is the current validator's address
     fn address(&self) -> Address;
     /// validators returns a set of current validator
-    fn validators(&self) -> &ValidatorSet;
+    fn validators(&self, height: Height) -> &Self::ValidatorsType;
     ///TODO
     fn event_mux(&self);
     /// broadcast sends a message to all validators (include itself)
@@ -41,7 +42,7 @@ pub trait Backend {
     /// gossip sends a message to all validators (exclude self)
     fn gossip(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
     /// commit a proposal with seals
-    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), ()>;
+    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String>;
     /// verifies the proposal. If a err_future_block error is returned,
     /// the time difference of the proposal and current time is also returned.
     fn verify(&self, proposal: &Proposal) -> Result<(), String>;
@@ -51,31 +52,31 @@ pub trait Backend {
     fn last_proposal(&self) -> Result<Proposal, ()>;
     fn has_proposal(&self, hash: &Hash, height: Height) -> bool;
     fn get_proposer(&self, height: Height) -> Address;
-    fn parent_validators(&self, proposal: &Proposal) -> &ValidatorSet;
+    fn parent_validators(&self, proposal: &Proposal) -> &Self::ValidatorsType;
     fn has_bad_proposal(&self, hash: Hash) -> bool;
 }
 
-struct ImplBackend<T: ValidatorSet> {
+struct ImplBackend {
     validaor: Validator,
-    validator_set: T,
+    validator_set: ImplValidatorSet,
     key_pair: KeyPair,
     inbound_cache: LruCache<Hash, String>,
     outbound_cache: LruCache<Hash, String>,
-    proposed_block_hash: Hash, // proposal hash it from local node
+    proposed_block_hash: Hash,
+    // proposal hash it from local node
     commit_channel: Sender<Block>,
     ledger: Arc<RwLock<Ledger>>,
     config: Config,
 }
 
-impl<T> Backend for ImplBackend<T>
-where
-    T: ValidatorSet,
+impl Backend for ImplBackend
 {
+    type ValidatorsType = ImplValidatorSet;
     fn address(&self) -> Address {
         *self.validaor.address()
     }
 
-    fn validators(&self) -> &ValidatorSet {
+    fn validators(&self, _: Height) -> &ImplValidatorSet {
         &self.validator_set
     }
 
@@ -93,9 +94,9 @@ where
     }
 
     /// TODO
-    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), ()> {
+    fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String> {
         // write seal into block
-        proposal.set_seal(seals);
+        proposal.set_seal(seals.clone());
         let block = proposal.block();
         // 1. if the proposed and committed blocks are the same, send the proposed hash
         //  to commit channel, which is being watched inside the engine.Seal() function.
@@ -107,10 +108,14 @@ where
             let block = block.clone();
             self.commit_channel.send(block).unwrap();
         }
+        let mut block = proposal.block().clone();
+        let mut votes = block.mut_votes();
+        votes.unwrap().add_votes(&seals);
+        let mut ledger = self.ledger.write().unwrap();
+        ledger.add_block(&block);
         info!("committed a new block, hash:{}, height:{}, proposer:{}", block.hash().short(), block.height(), block.coinbase());
-
         // TODO add block broadcast
-        Err(())
+        Err("".to_string())
     }
 
     /// TODO
@@ -176,7 +181,7 @@ where
     }
 
     // TODO
-    fn parent_validators(&self, proposal: &Proposal) -> &ValidatorSet {
+    fn parent_validators(&self, proposal: &Proposal) -> &Self::ValidatorsType {
         &self.validator_set
     }
 
@@ -186,16 +191,13 @@ where
     }
 }
 
-impl<T> Engine for ImplBackend<T>
-where
-    T: ValidatorSet
+impl Engine for ImplBackend
 {
-
-    fn start(&mut self) -> Result<(), String>{
-            Ok(())
+    fn start(&mut self) -> Result<(), String> {
+        Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), String>{
+    fn stop(&mut self) -> Result<(), String> {
         Ok(())
     }
 
@@ -225,13 +227,13 @@ where
         // check votes
         {
             let votes = header.votes.as_ref().ok_or("lack votes".to_string())?;
-            let op_code = MessageType::Committed;
+            let op_code = MessageType::Commit;
             let digest = header.hash();
             let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
             input.write_u8(op_code as u8).unwrap();
             input.write(digest.as_ref()).unwrap();
             let buffer = input.into_inner();
-            let digest:Hash = hash(buffer);
+            let digest: Hash = hash(buffer);
             if votes.verify_signs(digest, |validator| { self.validator_set.get_by_address(validator).is_some() }) == false {
                 return Err("invalid votes".to_string());
             }
@@ -250,13 +252,13 @@ where
             return Err("unkown block".to_string());
         }
         let proposer = header.proposer;
-        self.validator_set.get_by_address(proposer).ok_or("proposer is not validators".to_string()).map(|_|())
+        self.validator_set.get_by_address(proposer).ok_or("proposer is not validators".to_string()).map(|_| ())
     }
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
         let parent_header = {
             let ledger = self.ledger.read().unwrap();
-            ledger.get_header_by_height(header.height -1).ok_or("not found parent block for the header".to_string())?
+            ledger.get_header_by_height(header.height - 1).ok_or("not found parent block for the header".to_string())?
         };
         // TODO maybe reset validator
 
@@ -279,15 +281,5 @@ where
     fn finalize(&mut self, header: &mut Header) -> Result<(), String> {
         self.proposed_block_hash = EMPTY_HASH;
         Ok(())
-    }
-}
-
-impl<T> ImplBackend<T>
-where
-    T: ValidatorSet,
-{
-
-
-    fn verify_committed(&self, header: &Header) {
     }
 }
