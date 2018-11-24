@@ -23,6 +23,7 @@ use super::{
 use crate::{
     common::merkle_tree_root,
     store::ledger::Ledger,
+    types::votes::{encrypt_commit_bytes, decrypt_commit_bytes},
     types::block::{Header, Block},
     types::transaction::Transaction,
     types::{Height, Validator, EMPTY_ADDRESS},
@@ -98,12 +99,6 @@ impl Backend for ImplBackend
         // write seal into block
         proposal.set_seal(seals.clone());
         let block = proposal.block();
-        // 1. if the proposed and committed blocks are the same, send the proposed hash
-        //  to commit channel, which is being watched inside the engine.Seal() function.
-        // 2. otherwise, we try to insert the block.
-        // 3. if success, the `chain head event` event will be broadcasted, try to build
-        //  next block and the previous seal() will be stopped.
-        // 4. otherwise, a error will be returned and a round change event will be fired.
         if self.proposed_block_hash == block.hash() {
             let block = block.clone();
             self.commit_channel.send(block).unwrap();
@@ -227,14 +222,7 @@ impl Engine for ImplBackend
         // check votes
         {
             let votes = header.votes.as_ref().ok_or("lack votes".to_string())?;
-            let op_code = MessageType::Commit;
-            let digest = header.hash();
-            let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
-            input.write_u8(op_code as u8).unwrap();
-            input.write(digest.as_ref()).unwrap();
-            let buffer = input.into_inner();
-            let digest: Hash = hash(buffer);
-            if votes.verify_signs(digest, |validator| { self.validator_set.get_by_address(validator).is_some() }) == false {
+            if votes.verify_signs(header.hash(), |validator| { self.validator_set.get_by_address(validator).is_some() }) == false {
                 return Err("invalid votes".to_string());
             }
             let maj32 = self.validator_set.two_thirds_majority();
