@@ -13,14 +13,14 @@ use crate::{
 
 use super::core::Core;
 
-pub trait RoundChange {
+pub trait HandleRoundChange {
     fn send_next_round_change(&mut self);
     fn send_round_change(&mut self, round: Round);
     // receive a round change message and handle it
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult;
 }
 
-impl RoundChange for Core {
+impl HandleRoundChange for Core {
     fn send_next_round_change(&mut self) {
         let current_view = self.current_view();
         self.send_round_change(current_view.round + 1);

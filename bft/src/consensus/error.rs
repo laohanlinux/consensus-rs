@@ -19,6 +19,8 @@ pub enum ConsensusError {
     OldMessage,
     #[fail(display = "Invalid message")]
     InvalidMessage,
+    #[fail(display = "Unauthorized address")]
+    UnauthorizedAddress,
     #[fail(display = "Waiting for new round")]
     WaitNewRound,
     #[fail(display = "Not from proposer")]

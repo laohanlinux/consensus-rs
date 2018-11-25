@@ -1,4 +1,5 @@
 use actix::prelude::*;
+use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::ethkey::{KeyPair, Signature};
@@ -16,20 +17,24 @@ use std::io::Cursor;
 use std::time::Duration;
 
 use super::{
+    request::HandlerRequst,
     preprepare::HandlePreprepare,
+    prepare::HandlePrepare,
+    commit::HandleCommit,
+    round_change::HandleRoundChange,
     round_change_set::RoundChangeSet,
     round_state::RoundState,
     timer::{Op, Timer},
+    back_log::BackLogActor,
 };
 use crate::{
     consensus::backend::Backend,
     consensus::config::Config,
-    consensus::error::ConsensusError,
-    consensus::events::TimerEvent,
+    consensus::error::{ConsensusError, ConsensusResult},
+    consensus::events::{MessageEvent, NewHeaderEvent, FinalCommittedEvent, BackLogEvent, TimerEvent},
     consensus::types::{Proposal, Request as CSRequest, Round, Subject, View},
     consensus::validator::{ImplValidatorSet, ValidatorSet, Validators},
-    protocol::{GossipMessage as ProtoMessage, MessageType},
-    protocol::{GossipMessage, State},
+    protocol::{GossipMessage, MessageType, State},
     types::Validator,
 };
 
@@ -51,7 +56,8 @@ pub struct Core {
     round_change_timer: Addr<Timer>,
     pub consensus_timestamp: Duration,
 
-    pub backend: Box<Backend<ValidatorsType = ImplValidatorSet>>,
+    backlogStore: Addr<BackLogActor>,
+    pub backend: Box<Backend<ValidatorsType=ImplValidatorSet>>,
 }
 
 impl Actor for Core {
@@ -66,11 +72,43 @@ impl Actor for Core {
     }
 }
 
-impl Handler<ProtoMessage> for Core {
+impl Handler<NewHeaderEvent> for Core {
     type Result = ();
 
-    fn handle(&mut self, msg: ProtoMessage, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: NewHeaderEvent, ctx: &mut Self::Context) -> Self::Result {
+        let proposal = msg.proposal.clone();
+        self.start_new_zero_round();
+        let result: ConsensusResult = <Core as HandlerRequst>::handle(self, &CSRequest::new(proposal));
+        assert_eq!(result.is_ok(), true);
         ()
+    }
+}
+
+impl Handler<FinalCommittedEvent> for Core {
+    type Result = ();
+
+    fn handle(&mut self, msg: FinalCommittedEvent, ctx: &mut Self::Context) -> Self::Result {
+        self.stop_timer();
+        self.wait_round_change = false;
+        ()
+    }
+}
+
+impl Handler<MessageEvent> for Core {
+    type Result = ConsensusResult;
+
+    fn handle(&mut self, msg: MessageEvent, ctx: &mut Self::Context) -> Self::Result {
+        self.handle_message(&msg.payload)
+    }
+}
+
+impl Handler<BackLogEvent> for Core {
+    type Result = ConsensusResult;
+
+    fn handle(&mut self, msg: BackLogEvent, ctx: &mut Self::Context) -> Self::Result {
+        let msg = msg.msg;
+        let src = Validator::new(msg.address().unwrap());
+        self.handle_check_message(&msg, &src)
     }
 }
 
@@ -83,6 +121,53 @@ impl Handler<TimerEvent> for Core {
 }
 
 impl Core {
+    // p2p message
+    fn handle_message(&mut self, payload: &[u8]) -> ConsensusResult {
+        use std::borrow::Cow;
+        let mut msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
+        let address = msg.address().map_err(|err| ConsensusError::Unknown(err))?;
+        self.validators.get_by_address(address.clone()).ok_or(ConsensusError::UnauthorizedAddress)?;
+        self.handle_check_message(&msg, &Validator::new(address))
+    }
+
+    fn handle_time_msg(&mut self) {
+        if let Ok(last_proposal) = self.backend.last_proposal() {
+            let last_block = last_proposal.block();
+            if last_block.height() >= self.current_state.height() {
+                trace!("round change timeout, catch up latest height, last_height: {}", last_block.height());
+                return;
+            }
+            self.send_next_round_change();
+        }
+    }
+
+    pub fn handle_check_message(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
+        let result = match msg.code {
+            MessageType::Preprepare => {
+                <Core as HandlePreprepare>::handle(self, msg, src)
+            }
+            MessageType::Prepare => {
+                <Core as HandlePrepare>::handle(self, msg, src)
+            }
+            MessageType::Commit => {
+                <Core as HandleCommit>::handle(self, msg, src)
+            }
+            MessageType::RoundChange => {
+                <Core as HandleRoundChange>::handle(self, msg, src)
+            }
+        };
+        // TODO
+        if let Err(ref err) = result {
+            match err {
+                ConsensusError::FutureMessage | ConsensusError::FutureRoundMessage => {
+                    self.backlogStore.do_send(msg.clone());
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+
     /// need to check：height，round，State
     /// if at waitting for change，should handle receive to fast consensus
     pub fn check_message(&self, code: MessageType, view: &View) -> Result<(), ConsensusError> {
@@ -93,7 +178,7 @@ impl Core {
         }
 
         if code == MessageType::RoundChange {
-            // check view
+// check view
             if view.height > self.current_state.height() {
                 return Err(ConsensusError::FutureBlockMessage);
             } else if view.height < self.current_state.height() {
@@ -129,7 +214,7 @@ impl Core {
         let has_more_than_maj23 =
             self.validators.two_thirds_majority() + 1 <= committed_seals.len();
         assert!(has_more_than_maj23);
-        // TODO commit
+// TODO commit
         let mut proposal = self.current_state.proposal().unwrap().clone();
         let result = self.backend.commit(&mut proposal, committed_seals);
         if result.is_ok() {
@@ -157,15 +242,15 @@ impl Core {
     }
 
     // 启动新的轮次，触发的条件
-    // 1：新高度初始化
-    // 2：锁定+2/3的 round change 票
+// 1：新高度初始化
+// 2：锁定+2/3的 round change 票
     pub(crate) fn start_new_zero_round(&mut self) {
         trace!("before start zero round");
         let last_proposal = self.backend.last_proposal().unwrap();
         let last_height = last_proposal.block().height();
-        // TODO 增加判断，last_proposal == blockend.proposal_hash
+// TODO 增加判断，last_proposal == blockend.proposal_hash
         let new_view: View = View::new(last_height + 1, 0);
-        // TODO 从backend 获取 backend.validator_set
+// TODO 从backend 获取 backend.validator_set
         self.validators = self.backend.validators(last_height + 1).clone();
         self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
         assert_ne!(
@@ -174,18 +259,18 @@ impl Core {
             "validators'size should be more than zero"
         );
 
-        // New snapshot for new round
+// New snapshot for new round
         self.update_round_state(new_view, self.validators.clone(), false);
-        // calc new proposer
+// calc new proposer
         self.validators
             .calc_proposer(&last_proposal.block().hash(), last_height, new_view.round);
 
-        // reset state
+// reset state
         self.wait_round_change = false;
-        // set state into State::AcceptRequest
-        // NOTIC: the next step should set request atomic
+// set state into State::AcceptRequest
+// NOTIC: the next step should set request atomic
         self.set_state(State::AcceptRequest);
-        // reset new round change timer
+// reset new round change timer
         self.new_round_change_timer();
         info!("after start zero round");
     }
@@ -210,11 +295,11 @@ impl Core {
         }
 
         if last_height > self.current_state.height() {
-            // 本地的高度等于当前正在做共识的高度，证明网络上已经有新的高度了
+// 本地的高度等于当前正在做共识的高度，证明网络上已经有新的高度了
             trace!("catchup latest proposal, it should be not happen");
             return;
         }
-        // last_height + 1 = current_state.height
+// last_height + 1 = current_state.height
 
         trace!("ready to update round, because round change");
         let new_view = View::new(self.current_state.height(), self.current_state.round());
@@ -225,42 +310,42 @@ impl Core {
             "validators'size should be more than zero"
         );
 
-        // start new round timer
+// start new round timer
         self.round_change_set
             .max_round(self.validators.two_thirds_majority() + 1);
 
-        // TODO 继承上一次的Round change prove
-        // round change
-        // TODO prove tree
+// TODO 继承上一次的Round change prove
+// round change
+// TODO prove tree
         self.round_change_set = RoundChangeSet::new(self.validators.clone(), None);
 
-        // New snapshot for new round
+// New snapshot for new round
         self.update_round_state(new_view, self.validators.clone(), true);
-        // calc new proposer
+// calc new proposer
         self.validators
             .calc_proposer(&last_proposal.block().hash(), last_height, new_view.round);
 
-        // reset state
+// reset state
         self.wait_round_change = false;
-        // set state into State::AcceptRequest
-        // NOTIC: the next step should set request atomic
+// set state into State::AcceptRequest
+// NOTIC: the next step should set request atomic
         self.set_state(State::AcceptRequest);
 
-        // if current validator is proposer
+// if current validator is proposer
         if self.validators.is_proposer(self.address) {
-            // if it is locked, propose the old proposal, if we have pending request. propose pending request
+// if it is locked, propose the old proposal, if we have pending request. propose pending request
             if self.current_state.is_locked() {
-                // c.current_state.proposal has locked by previous proposer, see update_round_state
+// c.current_state.proposal has locked by previous proposer, see update_round_state
                 let r = CSRequest::new(self.current_state.proposal().unwrap().clone());
                 self.send_preprepare(&r);
-            // TODO
+// TODO
             } else {
-                // TODO
+// TODO
                 self.send_preprepare(self.current_state.pending_request.as_ref().unwrap());
             }
         }
 
-        // reset new round change timer
+// reset new round change timer
         self.new_round_change_timer();
         info!(
             "after start new round, new round: {}",
@@ -269,21 +354,21 @@ impl Core {
     }
 
     // 处理新的round
-    // 等待+2/3
+// 等待+2/3
     pub(crate) fn catchup_round(&mut self, round: Round) {
         trace!(
             "catchup new round, current round:{}, new round: {}",
             self.current_state.round(),
             round
         );
-        // set curret state into "wait for round change"
+// set curret state into "wait for round change"
         self.wait_round_change = true;
-        // start new round timer
+// start new round timer
         self.new_round_change_timer();
     }
 
     // TODO 修复不同节点锁定的提案不一致时，需要采用某种手段去修复
-    // 如以锁定的周期最新为基点
+// 如以锁定的周期最新为基点
     pub(crate) fn update_round_state(
         &mut self,
         view: View,
@@ -291,9 +376,9 @@ impl Core {
         round_change: bool,
     ) {
         debug!("update round state");
-        // 来自于轮次的改变
+// 来自于轮次的改变
         if round_change {
-            // 已经锁定在某一个高度，则应该继承其锁，且下一轮次继续以锁定的提案进行`共识`
+// 已经锁定在某一个高度，则应该继承其锁，且下一轮次继续以锁定的提案进行`共识`
             if self.current_state.is_locked() {
                 self.current_state = RoundState::new_round_state(
                     view,
@@ -303,7 +388,7 @@ impl Core {
                     self.current_state.pending_request.take(),
                 );
             } else {
-                // 未锁定到某个提案
+// 未锁定到某个提案
                 self.current_state = RoundState::new_round_state(
                     view,
                     vals,
@@ -313,7 +398,7 @@ impl Core {
                 );
             }
         } else {
-            // 来之新的高度，或者初始化的逻辑
+// 来之新的高度，或者初始化的逻辑
             self.current_state = RoundState::new_round_state(view, vals, None, None, None);
         }
     }
@@ -344,7 +429,7 @@ impl Core {
     }
 
     pub fn stop_future_preprepare_timer(&mut self) {
-        // stop old timer
+// stop old timer
         self.future_prepprepare_timer.try_send(Op::Stop);
     }
 
@@ -360,9 +445,9 @@ impl Core {
 
     pub fn new_round_change_timer(&mut self) {
         trace!("start new round timer");
-        // stop old timer
+// stop old timer
         self.round_change_timer.try_send(Op::Stop);
-        // start new timer
+// start new timer
         let pid = self.pid.clone();
         self.round_change_timer = Timer::create(move |_| {
             Timer::new(

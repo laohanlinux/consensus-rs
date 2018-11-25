@@ -14,15 +14,15 @@ use crate::{
 };
 
 use super::{
-    round_change::RoundChange,
+    round_change::HandleRoundChange,
     core::Core,
-    commit::Commit,
-    prepare::Prepare,
+    commit::HandleCommit,
+    prepare::HandlePrepare,
 };
 
 pub trait HandlePreprepare {
     fn send_preprepare(&self, requst: &Request<Proposal>);
-    fn handle(&mut self, msg: &GossipMessage, src: Validator) -> Result<(), ConsensusError>;
+    fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError>;
     fn accetp(&mut self, preprepare: &PrePrepare);
 }
 
@@ -40,7 +40,7 @@ impl HandlePreprepare for Core {
             }
     }
 
-    fn handle(&mut self, msg: &GossipMessage, src: Validator) -> ConsensusResult {
+    fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
         let mut preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(msg.msg()));
         let result = self.check_message(MessageType::Preprepare, &preprepare.view);
         // Ensure we have the same view with the PRE-PREPARE message
@@ -55,7 +55,7 @@ impl HandlePreprepare for Core {
                         }
                         None => {
                             return Err(ConsensusError::Engine(EngineError::InvalidProposal));
-                        },
+                        }
                     };
                     if pre_header.hash() != block.hash() {
                         return Err(ConsensusError::Engine(EngineError::InvalidProposal));
@@ -80,7 +80,7 @@ impl HandlePreprepare for Core {
         }
 
         // TODO
-        let (d , result) = self
+        let (d, result) = self
             .backend
             .verify(&preprepare.proposal);
 

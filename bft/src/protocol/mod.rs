@@ -211,6 +211,7 @@ pub(crate) fn to_priority(msg_code: MessageType, view: View) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use protocol::*;
     use cryptocurrency_kit::ethkey::Generator;
     use cryptocurrency_kit::ethkey::Random;
     use std::io::{self, Write};
@@ -220,7 +221,7 @@ mod tests {
         let (round, height) = (rand::random::<u64>(), rand::random::<u64>());
         let mut v: Vec<u8> = Vec::with_capacity(16);
         v.write_fmt(format_args!("{}{}", round, height)).unwrap();
-        let mut message = GossipMessage::new(MessageType::AcceptRequest, v, None);
+        let mut message = GossipMessage::new(MessageType::Prepare, v, None);
         message.set_sign(key_pair.secret());
 
         (message, key_pair)
@@ -228,12 +229,12 @@ mod tests {
 
     #[test]
     fn eq() {
-        assert_eq!(MessageType::AcceptRequest, MessageType::AcceptRequest);
-        let a = MessageType::AcceptRequest;
-        let b = MessageType::AcceptRequest;
+        assert_eq!(MessageType::Prepare, MessageType::AcceptRequest);
+        let a = MessageType::Prepare;
+        let b = MessageType::Prepare;
         assert_eq!(a, b);
-        assert!(MessageType::AcceptRequest < MessageType::Preprepared);
-        assert!(MessageType::AcceptRequest <= MessageType::Preprepared);
+        assert!(MessageType::Prepare < MessageType::Preprepared);
+        assert!(MessageType::Prepare <= MessageType::Preprepared);
     }
 
     #[test]
@@ -325,7 +326,7 @@ mod tests {
             let arc_msg_manager = msg_manager.clone();
             let join = thread::spawn(move || {
                 arc_msg_manager.write().unwrap().add(GossipMessage {
-                    code: MessageType::AcceptRequest,
+                    code: MessageType::Prepare,
                     msg: vec![1, 3, 4],
                     address: 100.into(),
                     signature: None,
