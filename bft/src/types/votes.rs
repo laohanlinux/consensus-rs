@@ -49,16 +49,17 @@ impl Votes {
     }
 
     pub fn verify_signs<F>(&self, digest: Hash, author: F) -> bool
-    where
-        F: Fn(Address) -> bool,
+        where
+            F: Fn(Address) -> bool,
     {
         self.0.iter().all(
-            |signature| match recover_bytes(signature, digest.as_ref()) {
-                Ok(ref public) => {
-                    let address = public_to_address(public);
-                    author(address)
+            |signature| {
+                match decrypt_commit_bytes(digest.as_ref(), &signature) {
+                    Ok(address) => {
+                        author(address)
+                    }
+                    Err(_) => return false,
                 }
-                Err(_) => false,
             },
         )
     }
@@ -83,10 +84,10 @@ pub fn decrypt_commit_bytes<T: AsRef<[u8]>>(
         Ok(ref public) => {
             let address = public_to_address(public);
             return Ok(address);
-        },
+        }
         Err(_) => {
             return Err("recover commit sign failed".to_string());
-        },
+        }
     }
 }
 

@@ -17,6 +17,7 @@ pub trait ValidatorSet {
     fn is_proposer(&self, address: Address) -> bool;
     fn add_validator(&mut self, address: Address) -> bool;
     fn remove_validator(&mut self, address: Address) -> bool;
+    fn fault(&self) -> usize;
     fn two_thirds_majority(&self) -> usize;
     fn has_two_thirds_majority(&self, n: usize) -> bool;
 }
@@ -121,9 +122,9 @@ impl ValidatorSet for ImplValidatorSet {
             .validators
             .iter()
             .any(|validator| *validator.address() == address)
-            {
-                return false;
-            }
+        {
+            return false;
+        }
         self.validators.push(Validator::new(address));
         self.validators
             .sort_by_key(|validator| *validator.address());
@@ -135,6 +136,12 @@ impl ValidatorSet for ImplValidatorSet {
             None => false,
             _ => true,
         }
+    }
+
+    fn fault(&self) -> usize {
+        let vals_size = self.validators.len() as f32;
+        let ceil = vals_size * 1.0 / 3.0;
+        ceil.ceil() as usize
     }
 
     // TODO
@@ -250,7 +257,7 @@ mod tests {
                     round,
                     val_set.proposer.as_ref().unwrap()
                 )
-                    .unwrap();
+                .unwrap();
             })
         }
         writeln!(io::stdout(), "========================").unwrap();
@@ -273,7 +280,7 @@ mod tests {
                     0,
                     val_set.proposer.as_ref().unwrap()
                 )
-                    .unwrap();
+                .unwrap();
             })
         }
     }

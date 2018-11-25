@@ -6,6 +6,7 @@ use cryptocurrency_kit::storage::values::StorageValue;
 
 use super::core::Core;
 use crate::{
+    consensus::error::{ConsensusError, ConsensusResult},
     consensus::types::{Subject, View},
     consensus::validator::ValidatorSet,
     protocol::{GossipMessage, MessageType, State},
@@ -21,15 +22,15 @@ pub trait Commit {
     fn send_commit(&mut self);
     fn send_commit_for_old_block(&mut self, view: &View, digest: Hash);
     fn broadcast_commit(&mut self, sub: &Subject, seal: Hash);
-    fn handle(&mut self, msg: &GossipMessage, src: Validator) -> Result<(), String>;
+    fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError>;
     fn verify_commit(
         &self,
         commit_seal: Option<&Signature>,
         subject: &Subject,
         sender: Address,
         src: Validator,
-    ) -> Result<(), String>;
-    fn accept(&mut self, msg: GossipMessage, src: Validator) -> Result<(), String>;
+    ) -> Result<(), ConsensusError>;
+    fn accept(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError>;
 }
 
 impl Commit for Core {
@@ -59,7 +60,7 @@ impl Commit for Core {
     }
 
     // handle commit type message
-    fn handle(&mut self, msg: &GossipMessage, src: Validator) -> Result<(), String> {
+    fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError> {
         let subject = Subject::from(msg.msg());
         let current_subject = self.current_state.subject().unwrap();
         self.check_message(MessageType::Commit, &subject.view)?;
@@ -67,7 +68,8 @@ impl Commit for Core {
             Ok(sender) => {
                 let subject = Subject::from_bytes(Cow::from(msg.msg()));
                 self.verify_commit(msg.commit_seal.as_ref(), &subject, sender, src.clone())?;
-                self.accept(msg.clone(), src.clone())?;
+                <Core as Commit>::accept(self, msg, src)?;
+
                 let val_set = self.val_set();
                 // receive more +2/3 votes
                 if self.current_state.commits.len() > val_set.two_thirds_majority()
@@ -78,10 +80,10 @@ impl Commit for Core {
                 }
             }
             Err(reason) => {
-                return Err(reason);
+                return Err(ConsensusError::Unknown(reason));
             }
         }
-        Err("".to_string())
+        unreachable!()
     }
 
     fn verify_commit(
@@ -90,26 +92,33 @@ impl Commit for Core {
         commit_subject: &Subject,
         sender: Address,
         src: Validator,
-    ) -> Result<(), String> {
+    ) -> Result<(), ConsensusError> {
         if commit_seal.is_none() {
-            return Err("commit seal is nil".to_string());
+            return Err(ConsensusError::Unknown("commit seal is nil".to_string()));
         }
         let commit_seal = commit_seal.unwrap();
         let sign_message = SignMessage::from(commit_subject.digest.as_ref());
         verify_address(&sender, commit_seal, &sign_message)
             .map(|_| ())
-            .map_err(|_| "message's sender should be commit seal".to_string())?;
+            .map_err(|_| {
+                ConsensusError::Unknown("message's sender should be commit seal".to_string())
+            })?;
         let current_state = &self.current_state;
         let current_subject = current_state.subject().unwrap();
         if current_subject.digest != commit_subject.digest
             || current_subject.view != commit_subject.view
         {
-            return Err("Inconsistent subjects between commit and proposal".to_string());
+            return Err(ConsensusError::Unknown(
+                "Inconsistent subjects between commit and proposal".to_string(),
+            ));
         }
         Ok(())
     }
 
-    fn accept(&mut self, msg: GossipMessage, _: Validator) -> Result<(), String> {
-        self.current_state.commits.add(msg.clone())
+    fn accept(&mut self, msg: &GossipMessage, _: &Validator) -> ConsensusResult {
+        self.current_state
+            .commits
+            .add(msg.clone())
+            .map_err(|err| ConsensusError::Unknown(err))
     }
 }
