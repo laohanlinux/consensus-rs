@@ -1,33 +1,30 @@
-use lru_time_cache::LruCache;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-use chrono::{Local, Duration};
+use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
+use chrono::Local;
 use chrono_humanize::HumanTime;
 use crossbeam::crossbeam_channel::Sender;
-use byteorder::{ReadBytesExt, WriteBytesExt, BigEndian, LittleEndian};
-use cryptocurrency_kit::crypto::{hash, HASH_SIZE, CryptoHash, Hash, EMPTY_HASH};
+use cryptocurrency_kit::common::to_keccak;
+use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH, HASH_SIZE};
 use cryptocurrency_kit::ethkey::keccak::Keccak256;
 use cryptocurrency_kit::ethkey::{
     sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
 };
-use cryptocurrency_kit::common::to_keccak;
-
-use std::sync::{Arc, RwLock};
+use lru_time_cache::LruCache;
 
 use super::{
     config::Config,
+    consensus::Engine,
+    error::{EngineError, EngineResult},
     types::Proposal,
     validator::{ImplValidatorSet, ValidatorSet},
-    consensus::Engine,
 };
-
 use crate::{
     common::merkle_tree_root,
     store::ledger::Ledger,
-    types::votes::{encrypt_commit_bytes, decrypt_commit_bytes},
-    types::block::{Header, Block},
-    types::transaction::Transaction,
+    types::block::{Block, Header},
     types::{Height, Validator, EMPTY_ADDRESS},
-    protocol::MessageType,
 };
 
 pub trait Backend {
@@ -46,7 +43,7 @@ pub trait Backend {
     fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String>;
     /// verifies the proposal. If a err_future_block error is returned,
     /// the time difference of the proposal and current time is also returned.
-    fn verify(&self, proposal: &Proposal) -> Result<(), String>;
+    fn verify(&self, proposal: &Proposal) -> (Duration, Result<(), EngineError>);
     fn sign(&self, digest: &[u8]) -> Result<Vec<u8>, String>;
     fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<bool, ()>;
 
@@ -55,6 +52,8 @@ pub trait Backend {
     fn get_proposer(&self, height: Height) -> Address;
     fn parent_validators(&self, proposal: &Proposal) -> &Self::ValidatorsType;
     fn has_bad_proposal(&self, hash: Hash) -> bool;
+
+    fn get_header_by_height(&self, height: Height) -> Option<Header>;
 }
 
 struct ImplBackend {
@@ -70,8 +69,7 @@ struct ImplBackend {
     config: Config,
 }
 
-impl Backend for ImplBackend
-{
+impl Backend for ImplBackend {
     type ValidatorsType = ImplValidatorSet;
     fn address(&self) -> Address {
         *self.validaor.address()
@@ -108,18 +106,23 @@ impl Backend for ImplBackend
         votes.unwrap().add_votes(&seals);
         let mut ledger = self.ledger.write().unwrap();
         ledger.add_block(&block);
-        info!("committed a new block, hash:{}, height:{}, proposer:{}", block.hash().short(), block.height(), block.coinbase());
+        info!(
+            "committed a new block, hash:{}, height:{}, proposer:{}",
+            block.hash().short(),
+            block.height(),
+            block.coinbase()
+        );
         // TODO add block broadcast
         Err("".to_string())
     }
 
     /// TODO
-    fn verify(&self, proposal: &Proposal) -> Result<(), String> {
+    fn verify(&self, proposal: &Proposal) -> (Duration, Result<(), EngineError>) {
         let block = &proposal.0;
         let header = block.header();
         let blh = header.hash();
         if self.has_bad_proposal(blh) {
-            return Err("bad unit".to_string());
+            return (Duration::from_nanos(0), Err(EngineError::InvalidProposal));
         }
 
         // check transaction
@@ -127,16 +130,32 @@ impl Backend for ImplBackend
             let transactions = block.transactions().to_vec();
             for transaction in &transactions {
                 if !transaction.verify_sign(self.config.chain_id) {
-                    return Err("invalid transaction signature".to_string());
+                    return (Duration::from_nanos(0), Err(EngineError::InvalidSignature));
                 }
             }
             let transaction_hash = merkle_tree_root(transactions);
             if transaction_hash == header.tx_hash {
-                return Err("invalid transaction hash".to_string());
+                return (
+                    Duration::from_nanos(0),
+                    Err(EngineError::InvalidTransactionHash),
+                );
             }
         }
-        self.verify_header(&header, false)?;
-        Ok(())
+        let result = self.verify_header(&header, false);
+        if let Err(ref err) = result {
+            match err {
+                EngineError::FutureBlock => {
+                    let now = Local::now().timestamp() as u64;
+                    if now <= block.header().time {
+                        return (Duration::from_nanos(now - block.header().time), result);
+                    } else {
+                        return (Duration::from_nanos(0), result);
+                    }
+                }
+                _ => return (Duration::from_nanos(0), result),
+            }
+        }
+        (Duration::from_nanos(0), Ok(()))
     }
 
     /// TODO
@@ -184,10 +203,14 @@ impl Backend for ImplBackend
     fn has_bad_proposal(&self, hash: Hash) -> bool {
         false
     }
+
+    fn get_header_by_height(&self, height: Height) -> Option<Header> {
+        let ledger = self.ledger.read().unwrap();
+        ledger.get_header_by_height(height)
+    }
 }
 
-impl Engine for ImplBackend
-{
+impl Engine for ImplBackend {
     fn start(&mut self) -> Result<(), String> {
         Ok(())
     }
@@ -201,33 +224,40 @@ impl Engine for ImplBackend
         Ok(header.proposer.clone())
     }
 
-    fn verify_header(&self, header: &Header, seal: bool) -> Result<(), String> {
-        use std::io::{Read, Write, Cursor};
+    fn verify_header(&self, header: &Header, seal: bool) -> Result<(), EngineError> {
         if header.height == 0 {
-            return Err("heigt is invalid".to_string());
+            return Err(EngineError::InvalidHeight);
         }
         let parent_header = {
             let ledger = self.ledger.read().unwrap();
             ledger
                 .get_header_by_height(header.height)
-                .ok_or("Lack of ancestors".to_string())?
+                .ok_or(EngineError::UnknownAncestor)?
         };
         if parent_header.hash() != header.prev_hash {
-            return Err("parent hash != heaer.prev hash".to_string());
+            return Err(EngineError::Unknown(
+                "parent hash != heaer.prev hash".to_string(),
+            ));
         }
         if header.time < parent_header.time + self.config.block_period {
-            return Err("Invalid timestamp".to_string());
+            return Err(EngineError::InvalidTimestamp);
         }
 
         // check votes
         {
-            let votes = header.votes.as_ref().ok_or("lack votes".to_string())?;
-            if votes.verify_signs(header.hash(), |validator| { self.validator_set.get_by_address(validator).is_some() }) == false {
-                return Err("invalid votes".to_string());
+            let votes = header.votes.as_ref().ok_or(EngineError::LackVotes(
+                self.validator_set.two_thirds_majority() + 1,
+                header.votes.as_ref().unwrap().len(),
+            ))?;
+            if votes.verify_signs(CryptoHash::hash(header), |validator| {
+                self.validator_set.get_by_address(validator).is_some()
+            }) == false
+            {
+                return Err(EngineError::InvalidSignature);
             }
             let maj32 = self.validator_set.two_thirds_majority();
             if maj32 + 1 > votes.len() {
-                return Err("lack votes".to_string());
+                return Err(EngineError::LackVotes(maj32 + 1, votes.len()));
             }
         }
 
@@ -240,13 +270,18 @@ impl Engine for ImplBackend
             return Err("unkown block".to_string());
         }
         let proposer = header.proposer;
-        self.validator_set.get_by_address(proposer).ok_or("proposer is not validators".to_string()).map(|_| ())
+        self.validator_set
+            .get_by_address(proposer)
+            .ok_or("proposer is not validators".to_string())
+            .map(|_| ())
     }
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
         let parent_header = {
             let ledger = self.ledger.read().unwrap();
-            ledger.get_header_by_height(header.height - 1).ok_or("not found parent block for the header".to_string())?
+            ledger
+                .get_header_by_height(header.height - 1)
+                .ok_or("not found parent block for the header".to_string())?
         };
         // TODO maybe reset validator
 

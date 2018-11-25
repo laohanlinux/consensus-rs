@@ -24,6 +24,7 @@ use super::{
 use crate::{
     consensus::backend::Backend,
     consensus::config::Config,
+    consensus::error::ConsensusError,
     consensus::events::TimerEvent,
     consensus::types::{Proposal, Request as CSRequest, Round, Subject, View},
     consensus::validator::{ImplValidatorSet, ValidatorSet, Validators},
@@ -43,13 +44,14 @@ pub struct Core {
     validators: ImplValidatorSet,
     pub current_state: RoundState,
     // 轮次的状态，存储本轮次的消息
-    round_change_set: RoundChangeSet<ImplValidatorSet>, // store round change messages
+    pub round_change_set: RoundChangeSet<ImplValidatorSet>, // store round change messages
 
-    wait_round_change: bool,
+    pub wait_round_change: bool,
     future_prepprepare_timer: Addr<Timer>,
     round_change_timer: Addr<Timer>,
+    pub consensus_timestamp: Duration,
 
-    backend: Box<Backend<ValidatorsType=ImplValidatorSet>>,
+    pub backend: Box<Backend<ValidatorsType = ImplValidatorSet>>,
 }
 
 impl Actor for Core {
@@ -81,9 +83,37 @@ impl Handler<TimerEvent> for Core {
 }
 
 impl Core {
-    pub fn check_message(&self, code: MessageType, view: &View) -> Result<(), String> {
+    /// need to check：height，round，State
+    /// if at waitting for change，should handle receive to fast consensus
+    pub fn check_message(&self, code: MessageType, view: &View) -> Result<(), ConsensusError> {
         if view.height == 0 {
-            return Err("invalid view, height should be zero".to_string());
+            return Err(ConsensusError::Unknown(
+                "invalid view, height should be zero".to_string(),
+            ));
+        }
+
+        if code == MessageType::RoundChange {
+            // check view
+            if view.height > self.current_state.height() {
+                return Err(ConsensusError::FutureBlockMessage);
+            } else if view.height < self.current_state.height() {
+                return Err(ConsensusError::OldMessage);
+            }
+            return Ok(());
+        }
+
+        if view.height > self.current_state.height() {
+            return Err(ConsensusError::FutureBlockMessage);
+        }
+        if view.height < self.current_state.height() {
+            return Err(ConsensusError::OldMessage);
+        }
+
+        if self.state == State::AcceptRequest {
+            if code > MessageType::Preprepare {
+                return Err(ConsensusError::FutureMessage);
+            }
+            return Ok(());
         }
 
         Ok(())
@@ -105,7 +135,11 @@ impl Core {
         if result.is_ok() {
             return;
         }
-        trace!("commit proposal, hash:{}, height:{}", proposal.block().hash().short(), proposal.block().height());
+        trace!(
+            "commit proposal, hash:{}, height:{}",
+            proposal.block().hash().short(),
+            proposal.block().height()
+        );
     }
 
     // TODO do more things
@@ -219,7 +253,7 @@ impl Core {
                 // c.current_state.proposal has locked by previous proposer, see update_round_state
                 let r = CSRequest::new(self.current_state.proposal().unwrap().clone());
                 self.send_preprepare(&r);
-                // TODO
+            // TODO
             } else {
                 // TODO
                 self.send_preprepare(self.current_state.pending_request.as_ref().unwrap());
@@ -236,15 +270,15 @@ impl Core {
 
     // 处理新的round
     // 等待+2/3
-    pub(crate) fn catchup_round(&mut self, view: &View) {
+    pub(crate) fn catchup_round(&mut self, round: Round) {
         trace!(
             "catchup new round, current round:{}, new round: {}",
             self.current_state.round(),
-            view.round
+            round
         );
-        // 设置当前状态为wait for round change
+        // set curret state into "wait for round change"
         self.wait_round_change = true;
-        // 启动新的时钟
+        // start new round timer
         self.new_round_change_timer();
     }
 
@@ -309,22 +343,22 @@ impl Core {
         &self.validators
     }
 
-    fn stop_future_preprepare_timer(&mut self) {
+    pub fn stop_future_preprepare_timer(&mut self) {
         // stop old timer
         self.future_prepprepare_timer.try_send(Op::Stop);
     }
 
-    fn stop_round_change_timer(&mut self) {
+    pub fn stop_round_change_timer(&mut self) {
         self.round_change_timer.try_send(Op::Stop);
         info!("stop round change timer");
     }
 
-    fn stop_timer(&mut self) {
+    pub fn stop_timer(&mut self) {
         self.stop_future_preprepare_timer();
         self.stop_round_change_timer();
     }
 
-    fn new_round_change_timer(&mut self) {
+    pub fn new_round_change_timer(&mut self) {
         trace!("start new round timer");
         // stop old timer
         self.round_change_timer.try_send(Op::Stop);
@@ -337,5 +371,13 @@ impl Core {
                 pid,
             )
         })
+    }
+
+    pub fn new_round_future_preprepare_timer(&mut self, duraton: Duration) {
+        trace!("stop future preprepare timer");
+        self.stop_future_preprepare_timer();
+        let pid = self.pid.clone();
+        self.future_prepprepare_timer =
+            Timer::create(move |_| Timer::new("future preprepare".to_string(), duraton, pid));
     }
 }
