@@ -47,3 +47,4 @@ pub mod types;
 pub mod store;
 pub mod core;
 pub mod protocol;
+pub mod p2p;
