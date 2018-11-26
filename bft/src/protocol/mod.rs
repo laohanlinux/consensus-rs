@@ -208,190 +208,190 @@ pub(crate) fn to_priority(msg_code: MessageType, view: View) -> i64 {
     -priority
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use protocol::*;
-    use cryptocurrency_kit::ethkey::Generator;
-    use cryptocurrency_kit::ethkey::Random;
-    use std::io::{self, Write};
-
-    fn new_message() -> (GossipMessage, KeyPair) {
-        let key_pair = Random.generate().unwrap();
-        let (round, height) = (rand::random::<u64>(), rand::random::<u64>());
-        let mut v: Vec<u8> = Vec::with_capacity(16);
-        v.write_fmt(format_args!("{}{}", round, height)).unwrap();
-        let mut message = GossipMessage::new(MessageType::Prepare, v, None);
-        message.set_sign(key_pair.secret());
-
-        (message, key_pair)
-    }
-
-    #[test]
-    fn eq() {
-        assert_eq!(MessageType::Prepare, MessageType::AcceptRequest);
-        let a = MessageType::Prepare;
-        let b = MessageType::Prepare;
-        assert_eq!(a, b);
-        assert!(MessageType::Prepare < MessageType::Preprepared);
-        assert!(MessageType::Prepare <= MessageType::Preprepared);
-    }
-
-    #[test]
-    fn message_serde() {
-        let (mut message, _) = new_message();
-        //        writeln!(io::stdout(), "{:?}", message.msg).unwrap();
-        let json = serde_json::to_string_pretty(&message).unwrap();
-        writeln!(io::stdout(), "{}", json).unwrap();
-        let message_de: GossipMessage = serde_json::from_str(&json).unwrap();
-        assert_eq!(message.code, message_de.code);
-        assert_eq!(message.msg, message_de.msg);
-        assert_eq!(message.signature, message_de.signature);
-        assert_eq!(message.address, message_de.address);
-        assert_eq!(message.commit_seal, message_de.commit_seal);
-    }
-
-    #[test]
-    fn message_manager() {
-        let mut msg = MessageManage::new(
-            View {
-                round: 1,
-                height: 1,
-            },
-         new_zero_validator_set(),
-        );
-
-        assert_eq!(msg.len(), 0);
-        assert_eq!(
-            msg.view(),
-            View {
-                round: 1,
-                height: 1,
-            }
-        );
-        assert_eq!(msg.values().len(), 0);
-
-        // add a message
-        {
-            assert_eq!(
-                msg.add(GossipMessage {
-                    code: MessageType::AcceptRequest,
-                    msg: vec![1, 3, 4],
-                    address: 100.into(),
-                    signature: None,
-                    commit_seal: None,
-                })
-                    .is_ok(),
-                true
-            );
-            assert_eq!(
-                msg.add(GossipMessage {
-                    code: MessageType::AcceptRequest,
-                    msg: vec![1, 3, 4],
-                    address: 101.into(),
-                    signature: None,
-                    commit_seal: None,
-                })
-                    .is_ok(),
-                false
-            );
-        }
-
-        // get a message
-        {
-            assert_eq!(
-                msg.get_message(100.into()).unwrap().code,
-                MessageType::AcceptRequest
-            );
-        }
-        assert_eq!(msg.len(), 1);
-        assert_eq!(msg.values().len(), 1);
-    }
-
-    #[test]
-    fn current_message_manager() {
-        use std::sync::Arc;
-        use std::sync::RwLock;
-        use std::thread;
-        let mut msg_manager = Arc::new(RwLock::new(MessageManage::new(
-            View {
-                round: 1,
-                height: 1,
-            },
-            new_zero_validator_set(),
-        )));
-
-        let mut joins: Vec<thread::JoinHandle<i32>> = vec![];
-        (0..100).for_each(|_| {
-            let arc_msg_manager = msg_manager.clone();
-            let join = thread::spawn(move || {
-                arc_msg_manager.write().unwrap().add(GossipMessage {
-                    code: MessageType::Prepare,
-                    msg: vec![1, 3, 4],
-                    address: 100.into(),
-                    signature: None,
-                    commit_seal: None,
-                });
-                1
-            });
-        });
-
-        for join in joins {
-            assert_eq!(join.join().unwrap(), 1);
-        }
-
-        assert_eq!(msg_manager.write().unwrap().len(), 1);
-    }
-
-    fn new_zero_validator_set() -> ImplValidatorSet {
-        let mut address_list = vec![
-            Address::from(100),
-            Address::from(10),
-            Address::from(21),
-            Address::from(31),
-            Address::from(3),
-        ];
-        ImplValidatorSet::new(&address_list, Box::new(fn_selector))
-    }
-
-    fn new_zero_validator_set1() -> Box<ValidatorSet>
-    {
-        let mut address_list = vec![
-            Address::from(100),
-            Address::from(10),
-            Address::from(21),
-            Address::from(31),
-            Address::from(3),
-        ];
-        Box::new(ImplValidatorSet::new(&address_list, Box::new(fn_selector)))
-    }
-
-    #[test]
-    fn priority_queue() {
-        use chrono::Local;
-        use chrono_humanize::HumanTime;
-        use priority_queue::PriorityQueue;
-
-        // push dump message
-        {
-            let mut qp = PriorityQueue::new();
-            let (mut message, _) = new_message();
-            assert!(qp.push(message.clone(), 1).is_none());
-            assert!(qp.push(message.clone(), 1).is_some());
-        }
-
-        {
-            let mut qp = PriorityQueue::new();
-            (0..10).for_each(|idx: u8| {
-                let (mut message, _) = new_message();
-                message.msg.push(idx);
-                qp.push(message, idx);
-            });
-
-            (0..10).for_each(|_| {
-                let (message, idx) = qp.pop().unwrap();
-                writeln!(io::stdout(), "idx: {}, {:#?}", idx, message).unwrap();
-            });
-        }
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    use super::*;
+//    use protocol::*;
+//    use cryptocurrency_kit::ethkey::Generator;
+//    use cryptocurrency_kit::ethkey::Random;
+//    use std::io::{self, Write};
+//
+//    fn new_message() -> (GossipMessage, KeyPair) {
+//        let key_pair = Random.generate().unwrap();
+//        let (round, height) = (rand::random::<u64>(), rand::random::<u64>());
+//        let mut v: Vec<u8> = Vec::with_capacity(16);
+//        v.write_fmt(format_args!("{}{}", round, height)).unwrap();
+//        let mut message = GossipMessage::new(MessageType::Prepare, v, None);
+//        message.set_sign(key_pair.secret());
+//
+//        (message, key_pair)
+//    }
+//
+//    #[test]
+//    fn eq() {
+//        assert_eq!(MessageType::Prepare, MessageType::AcceptRequest);
+//        let a = MessageType::Prepare;
+//        let b = MessageType::Prepare;
+//        assert_eq!(a, b);
+//        assert!(MessageType::Prepare < MessageType::Preprepared);
+//        assert!(MessageType::Prepare <= MessageType::Preprepared);
+//    }
+//
+//    #[test]
+//    fn message_serde() {
+//        let (mut message, _) = new_message();
+//        //        writeln!(io::stdout(), "{:?}", message.msg).unwrap();
+//        let json = serde_json::to_string_pretty(&message).unwrap();
+//        writeln!(io::stdout(), "{}", json).unwrap();
+//        let message_de: GossipMessage = serde_json::from_str(&json).unwrap();
+//        assert_eq!(message.code, message_de.code);
+//        assert_eq!(message.msg, message_de.msg);
+//        assert_eq!(message.signature, message_de.signature);
+//        assert_eq!(message.address, message_de.address);
+//        assert_eq!(message.commit_seal, message_de.commit_seal);
+//    }
+//
+//    #[test]
+//    fn message_manager() {
+//        let mut msg = MessageManage::new(
+//            View {
+//                round: 1,
+//                height: 1,
+//            },
+//         new_zero_validator_set(),
+//        );
+//
+//        assert_eq!(msg.len(), 0);
+//        assert_eq!(
+//            msg.view(),
+//            View {
+//                round: 1,
+//                height: 1,
+//            }
+//        );
+//        assert_eq!(msg.values().len(), 0);
+//
+//        // add a message
+//        {
+//            assert_eq!(
+//                msg.add(GossipMessage {
+//                    code: MessageType::AcceptRequest,
+//                    msg: vec![1, 3, 4],
+//                    address: 100.into(),
+//                    signature: None,
+//                    commit_seal: None,
+//                })
+//                    .is_ok(),
+//                true
+//            );
+//            assert_eq!(
+//                msg.add(GossipMessage {
+//                    code: MessageType::AcceptRequest,
+//                    msg: vec![1, 3, 4],
+//                    address: 101.into(),
+//                    signature: None,
+//                    commit_seal: None,
+//                })
+//                    .is_ok(),
+//                false
+//            );
+//        }
+//
+//        // get a message
+//        {
+//            assert_eq!(
+//                msg.get_message(100.into()).unwrap().code,
+//                MessageType::AcceptRequest
+//            );
+//        }
+//        assert_eq!(msg.len(), 1);
+//        assert_eq!(msg.values().len(), 1);
+//    }
+//
+//    #[test]
+//    fn current_message_manager() {
+//        use std::sync::Arc;
+//        use std::sync::RwLock;
+//        use std::thread;
+//        let mut msg_manager = Arc::new(RwLock::new(MessageManage::new(
+//            View {
+//                round: 1,
+//                height: 1,
+//            },
+//            new_zero_validator_set(),
+//        )));
+//
+//        let mut joins: Vec<thread::JoinHandle<i32>> = vec![];
+//        (0..100).for_each(|_| {
+//            let arc_msg_manager = msg_manager.clone();
+//            let join = thread::spawn(move || {
+//                arc_msg_manager.write().unwrap().add(GossipMessage {
+//                    code: MessageType::Prepare,
+//                    msg: vec![1, 3, 4],
+//                    address: 100.into(),
+//                    signature: None,
+//                    commit_seal: None,
+//                });
+//                1
+//            });
+//        });
+//
+//        for join in joins {
+//            assert_eq!(join.join().unwrap(), 1);
+//        }
+//
+//        assert_eq!(msg_manager.write().unwrap().len(), 1);
+//    }
+//
+//    fn new_zero_validator_set() -> ImplValidatorSet {
+//        let mut address_list = vec![
+//            Address::from(100),
+//            Address::from(10),
+//            Address::from(21),
+//            Address::from(31),
+//            Address::from(3),
+//        ];
+//        ImplValidatorSet::new(&address_list, Box::new(fn_selector))
+//    }
+//
+//    fn new_zero_validator_set1() -> Box<ValidatorSet>
+//    {
+//        let mut address_list = vec![
+//            Address::from(100),
+//            Address::from(10),
+//            Address::from(21),
+//            Address::from(31),
+//            Address::from(3),
+//        ];
+//        Box::new(ImplValidatorSet::new(&address_list, Box::new(fn_selector)))
+//    }
+//
+//    #[test]
+//    fn priority_queue() {
+//        use chrono::Local;
+//        use chrono_humanize::HumanTime;
+//        use priority_queue::PriorityQueue;
+//
+//        // push dump message
+//        {
+//            let mut qp = PriorityQueue::new();
+//            let (mut message, _) = new_message();
+//            assert!(qp.push(message.clone(), 1).is_none());
+//            assert!(qp.push(message.clone(), 1).is_some());
+//        }
+//
+//        {
+//            let mut qp = PriorityQueue::new();
+//            (0..10).for_each(|idx: u8| {
+//                let (mut message, _) = new_message();
+//                message.msg.push(idx);
+//                qp.push(message, idx);
+//            });
+//
+//            (0..10).for_each(|_| {
+//                let (message, idx) = qp.pop().unwrap();
+//                writeln!(io::stdout(), "idx: {}, {:#?}", idx, message).unwrap();
+//            });
+//        }
+//    }
+//}
