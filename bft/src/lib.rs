@@ -39,6 +39,9 @@ extern crate crossbeam;
 extern crate log;
 #[macro_use]
 extern crate failure;
+extern crate futures;
+extern crate libp2p;
+extern crate tokio;
 
 
 pub mod common;
@@ -48,4 +51,5 @@ pub mod store;
 pub mod core;
 pub mod protocol;
 pub mod p2p;
+#[macro_use]
 pub mod subscriber;
