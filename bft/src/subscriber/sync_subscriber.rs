@@ -1,86 +1,71 @@
 use actix::prelude::*;
 
-#[derive(Message)]
-pub struct Signal(usize);
+#[macro_export]
+macro_rules! impl_subscribe_handler {
+    ($key: ident) => {
+        #[derive(Message)]
+        struct Subscribe(pub Recipient<$key>);
 
-#[derive(Message)]
-struct Subscribe(pub Recipient<Signal>);
-
-#[derive(Message)]
-pub enum SubscribeMessage<T> {
-    SubScribe(T),
-    UnSubScribe(T),
-    RawMessage(T),
-}
-
-#[derive(Clone)]
-pub struct ProcessSignals {
-    pub pid: Option<Addr<ProcessSignals>>,
-    subscribers: Vec<Recipient<Signal>>,
-}
-
-impl Actor for ProcessSignals {
-    type Context = Context<Self>;
-    fn started(&mut self, ctx: &mut Context<Self>) {
-        // add stream
-    }
-}
-
-impl ProcessSignals {
-    fn send_signal(&mut self, sig: usize) {
-        for subscribe in &self.subscribers {
-            subscribe.do_send(Signal(sig));
+        #[derive(Message)]
+        pub enum SubscribeMessage {
+            SubScribe(Recipient<$key>),
+            UnSubScribe(Recipient<$key>),
         }
-    }
 
-    pub fn subscribe(&mut self) {
-        use std::io::{self, Write};
-        writeln!(io::stdout(), "receive a subscribe message");
-    }
-    pub fn unsubscribe(&mut self) {}
-
-    pub fn distribute(&mut self) {}
-}
-
-impl Handler<Subscribe> for ProcessSignals {
-    type Result = ();
-
-    fn handle(&mut self, msg: Subscribe, _: &mut Self::Context) {
-        self.subscribers.push(msg.0);
-    }
-}
-
-impl<T> Handler<SubscribeMessage<T>> for ProcessSignals {
-    type Result = ();
-
-    fn handle(&mut self, msg: SubscribeMessage<T>, ctx: &mut Self::Context) {
-        use std::io::{self, Write};
-        writeln!(io::stdout(), "DoDoDoDoDo");
-        match msg {
-            SubscribeMessage::SubScribe(ref recipient) => {
-                self.subscribe();
-            }
-            SubscribeMessage::UnSubScribe(ref recipient) => {
-                self.unsubscribe();
-            }
-            SubscribeMessage::RawMessage(_) => {}
+        #[derive(Clone)]
+        pub struct ProcessSignals {
+            subscribers: Vec<Recipient<$key>>,
         }
-//        ctx.address().send()
-        ()
-    }
-}
 
-struct Worker {}
+        impl Actor for ProcessSignals {
+            type Context = Context<Self>;
+        }
 
-impl Actor for Worker {
-    type Context = Context<Self>;
-}
+        impl Handler<Subscribe> for ProcessSignals {
+            type Result = ();
 
-impl Handler<Signal> for Worker {
-    type Result = ();
-    fn handle(&mut self, msg: Signal, _: &mut Self::Context) {
-        use std::io::{self, Write};
-        writeln!(io::stdout(), "receive a signal: {}", msg.0);
+            fn handle(&mut self, msg: Subscribe, _: &mut Self::Context) {
+                self.subscribers.push(msg.0);
+            }
+        }
+
+        impl Handler<$key> for ProcessSignals {
+            type Result = ();
+            fn handle(&mut self, msg: $key, ctx: &mut Self::Context) {
+                self.distribute(msg);
+            }
+        }
+
+        impl Handler<SubscribeMessage> for ProcessSignals {
+            type Result = ();
+
+            fn handle(&mut self, msg: SubscribeMessage, ctx: &mut Self::Context) {
+                match msg {
+                    SubscribeMessage::SubScribe(recipient) => {
+                        self.subscribe(recipient);
+                    }
+                    SubscribeMessage::UnSubScribe(recipient) => {
+                        self.unsubscribe(recipient);
+                    }
+                }
+            }
+        }
+
+        impl ProcessSignals {
+            pub fn subscribe(&mut self, recipient: Recipient<$key>) {
+                self.subscribers.push(recipient);
+            }
+
+            pub fn unsubscribe(&mut self, recipient: Recipient<$key>) {
+                self.subscribers.remove_item(&recipient);
+            }
+
+            pub fn distribute(&mut self, msg: $key) {
+                for subscriber in &self.subscribers {
+                    subscriber.do_send(msg.clone());
+                }
+            }
+        }
     }
 }
 
@@ -89,12 +74,30 @@ mod tests {
     use super::*;
     use std::io::{self, Write};
 
+    struct Worker {}
+
+    impl Actor for Worker {
+        type Context = Context<Self>;
+    }
+
+    #[derive(Message, Debug, Clone)]
+    pub struct RawMessage {}
+
+    impl Handler<RawMessage> for Worker {
+        type Result = ();
+        fn handle(&mut self, msg: RawMessage, _: &mut Self::Context) {
+            use std::io::{self, Write};
+            writeln!(io::stdout(), "work receive a msg: {:?}", msg);
+        }
+    }
+
+    impl_subscribe_handler!{RawMessage}
+
     #[test]
     fn t_subscribe() {
         let system = System::new("test");
         let subscribe_pid = Actor::create(|_| {
             ProcessSignals {
-                pid: None,
                 subscribers: vec![],
             }
         });
@@ -106,15 +109,8 @@ mod tests {
         let message = SubscribeMessage::SubScribe(recipient);
         let request = subscribe_pid.send(message);
         writeln!(io::stdout(), "get request");
-        ::std::thread::spawn(|| {});
-        ::std::thread::spawn(|| {
-            ::std::thread::sleep(
-                ::std::time::Duration::from_secs(1)
-            );
-        });
-
+        let request = subscribe_pid.send(RawMessage {});
+        writeln!(io::stdout(), "get request");
         system.run();
-//        addr.send(Subscribe(worker.recipient::<Signal>()));
-//
     }
 }
