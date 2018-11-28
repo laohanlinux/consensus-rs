@@ -48,8 +48,15 @@ impl DiscoverService {
                             .unwrap();
                     }
                     MdnsPacket::Response(response) => {
+                        let peers_size = response.discovered_peers().count();
+                        println!("==============>{}", peers_size);
                         for peer in response.discovered_peers() {
-                            writeln!(io::stdout(), "mdsc packet, local->{:?}, remote->{:?}", peer_id.clone().to_base58(), peer.id().to_base58());
+                            writeln!(
+                                io::stdout(),
+                                "mdsc packet, local->{:?}, remote->{:?}",
+                                peer_id.clone().to_base58(),
+                                peer.id().to_base58()
+                            );
                             let id = peer.id().clone();
                             if peer_id.clone() == id {
                                 continue;
@@ -58,8 +65,9 @@ impl DiscoverService {
                             for address in peer.addresses() {
                                 addresses.push(address.clone());
                             }
-                            let request = p2p_subscriber_clone.send(P2PEvent::AddPeer(id, addresses));
-                            Arbiter::spawn(request.then(|_|{future::result(Ok(()))}));
+                            let request =
+                                p2p_subscriber_clone.send(P2PEvent::AddPeer(id, addresses));
+                            Arbiter::spawn(request.then(|_| future::result(Ok(()))));
                         }
                     }
                     MdnsPacket::ServiceDiscovery(query) => {
@@ -80,7 +88,6 @@ impl DiscoverService {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -106,7 +113,7 @@ mod tests {
 
     impl Handler<P2PEvent> for Worker {
         type Result = ();
-        fn handle(&mut self, msg: P2PEvent, _: &mut Self::Context) {
+        fn handle(&mut self, msg: P2PEvent, ctx: &mut Self::Context) {
             match msg {
                 P2PEvent::AddPeer(_, _) => {
                     writeln!(io::stdout(), "work receive a msg: {:?}", msg);
@@ -121,20 +128,35 @@ mod tests {
     #[test]
     fn t_discover_service() {
         let system = System::new("test");
-        (0..10).for_each(|_|{
-            let peer_id = PeerId::random();
-            let port = rand::random::<u8>();
-            let address: Multiaddr = format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
-            let p2p_subscriber = spawn_sync_subscriber();
+        let p2p_subscriber = spawn_sync_subscriber();
+        let worker_pid = Worker::create(|_| {
+            Worker {}
+        });
+        // register
+        {
+            let recipient = worker_pid.recipient();
             // register
-            let recipient = p2p_subscriber.clone().recipient();
             let message = SubscribeMessage::SubScribe(recipient);
             let request = p2p_subscriber.send(message);
-            Arbiter::spawn(request.then(|_|{
+            // Execute the future on the current thread, same to tokio::run()
+            Arbiter::spawn(request.then(|_| {
                 writeln!(io::stdout(), "Got request, Hi").unwrap();
                 future::result(Ok(()))
             }));
-            let pid = DiscoverService::spawn_discover_service(p2p_subscriber.clone(), peer_id, address, Duration::from_secs(3));
+        }
+
+        let mut mdns = vec![];
+        (0..5).for_each(|_| {
+            let peer_id = PeerId::random();
+            let port = rand::random::<u8>();
+            let address: Multiaddr = format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
+            let pid = DiscoverService::spawn_discover_service(
+                p2p_subscriber.clone(),
+                peer_id,
+                address,
+                Duration::from_secs(3),
+            );
+            mdns.push(pid);
         });
         system.run();
     }
