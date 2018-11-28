@@ -84,6 +84,7 @@ macro_rules! impl_subscribe_handler {
             }
 
             pub fn distribute(&mut self, msg: $key) {
+                println!("分发消息: {}", self.subscribers.len());
                 for subscriber in &self.subscribers {
                     subscriber.do_send(msg.clone());
                 }

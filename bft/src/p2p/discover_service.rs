@@ -49,7 +49,7 @@ impl DiscoverService {
                     }
                     MdnsPacket::Response(response) => {
                         for peer in response.discovered_peers() {
-                            writeln!(io::stdout(), "mdsc packet: {:?}", peer.id());
+                            writeln!(io::stdout(), "mdsc packet, local->{:?}, remote->{:?}", peer_id.clone().to_base58(), peer.id().to_base58());
                             let id = peer.id().clone();
                             if peer_id.clone() == id {
                                 continue;
@@ -59,9 +59,8 @@ impl DiscoverService {
                                 addresses.push(address.clone());
                             }
                             let request = p2p_subscriber_clone.send(P2PEvent::AddPeer(id, addresses));
+                            Arbiter::spawn(request.then(|_|{future::result(Ok(()))}));
                         }
-
-
                     }
                     MdnsPacket::ServiceDiscovery(query) => {
                         query.respond(ttl);
@@ -71,7 +70,7 @@ impl DiscoverService {
         });
 
         Arbiter::spawn(future.then(|res| {
-            System::current().stop();
+            writeln!(io::stdout(), "Got request");
             future::result(Ok(()))
         }));
 
@@ -88,6 +87,16 @@ mod tests {
     use super::*;
     use rand::Rng;
     use std::io::{self, Write};
+
+    pub struct Ping {}
+
+    impl Message for Ping {
+        type Result = ();
+    }
+
+    type PongRecipient = Recipient<Ping>;
+
+    type PongRecipients<T: Message> = Vec<Recipient<T>>;
 
     struct Worker {}
 
@@ -112,7 +121,6 @@ mod tests {
     #[test]
     fn t_discover_service() {
         let system = System::new("test");
-
         (0..10).for_each(|_|{
             let peer_id = PeerId::random();
             let port = rand::random::<u8>();
@@ -122,6 +130,10 @@ mod tests {
             let recipient = p2p_subscriber.clone().recipient();
             let message = SubscribeMessage::SubScribe(recipient);
             let request = p2p_subscriber.send(message);
+            Arbiter::spawn(request.then(|_|{
+                writeln!(io::stdout(), "Got request, Hi").unwrap();
+                future::result(Ok(()))
+            }));
             let pid = DiscoverService::spawn_discover_service(p2p_subscriber.clone(), peer_id, address, Duration::from_secs(3));
         });
         system.run();
