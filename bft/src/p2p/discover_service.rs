@@ -21,8 +21,7 @@ impl Actor for DiscoverService {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        use std::io::{self, Write};
-        writeln!(io::stdout(), "discover service started");
+        trace!("Discover service started");
     }
 }
 
