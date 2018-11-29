@@ -71,6 +71,7 @@ macro_rules! impl_subscribe_handler {
                 self.subscribers.remove_item(&recipient);
             }
 
+            /// Async send a message to subscriber mailbox
             pub fn distribute(&mut self, msg: $key) {
                 for subscriber in &self.subscribers {
                     subscriber.do_send(msg.clone());

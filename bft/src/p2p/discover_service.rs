@@ -23,6 +23,10 @@ impl Actor for DiscoverService {
     fn started(&mut self, ctx: &mut Context<Self>) {
         trace!("Discover service started");
     }
+
+    fn stopped(&mut self, ctx: &mut Self::Context) {
+        trace!("Discover service stopped");
+    }
 }
 
 impl DiscoverService {
@@ -64,9 +68,8 @@ impl DiscoverService {
                             for address in peer.addresses() {
                                 addresses.push(address.clone());
                             }
-                            let request =
-                                p2p_subscriber_clone.send(P2PEvent::AddPeer(id, addresses));
-                            Arbiter::spawn(request.then(|_| future::result(Ok(()))));
+                            // if the receiver actor's mailbox is full, ignore message
+                            p2p_subscriber_clone.try_send(P2PEvent::AddPeer(id, addresses));
                         }
                     }
                     MdnsPacket::ServiceDiscovery(query) => {
@@ -115,7 +118,7 @@ mod tests {
         fn handle(&mut self, msg: P2PEvent, ctx: &mut Self::Context) {
             match msg {
                 P2PEvent::AddPeer(_, _) => {
-                    writeln!(io::stdout(), "work receive a msg: {:?}", msg);
+                    writeln!(io::stdout(), "{} work receive a msg: {:?}", chrono::Local::now(), msg);
                 }
                 P2PEvent::DropPeer(_, _) => {
                     writeln!(io::stdout(), "work receive a msg: {:?}", msg);
@@ -136,16 +139,11 @@ mod tests {
             let recipient = worker_pid.recipient();
             // register
             let message = SubscribeMessage::SubScribe(recipient);
-            let request = p2p_subscriber.send(message);
-            // Execute the future on the current thread, same to tokio::run()
-            Arbiter::spawn(request.then(|_| {
-                writeln!(io::stdout(), "Got request, Hi").unwrap();
-                future::result(Ok(()))
-            }));
+            p2p_subscriber.do_send(message);
         }
 
         let mut mdns = vec![];
-        (0..5).for_each(|_| {
+        (0..50).for_each(|_| {
             let peer_id = PeerId::random();
             let port = rand::random::<u8>();
             let address: Multiaddr = format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap();
@@ -157,6 +155,7 @@ mod tests {
             );
             mdns.push(pid);
         });
+
         system.run();
     }
 }

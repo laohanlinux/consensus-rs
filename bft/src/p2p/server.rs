@@ -63,10 +63,13 @@ impl Server {
     }
 
     fn add_peer(&mut self, remote_id: PeerId, remote_addresses: Vec<Multiaddr>) {
+        if self.peers.contains_key(&remote_id) {
+            return;
+        }
+
+        // try to connect
 
     }
 
-    fn drop_peer(&mut self, remote_id: PeerId, remote_addresses: Vec<Multiaddr>) {
-
-    }
+    fn drop_peer(&mut self, remote_id: PeerId, remote_addresses: Vec<Multiaddr>) {}
 }
