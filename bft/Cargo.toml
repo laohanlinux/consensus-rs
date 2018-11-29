@@ -32,3 +32,8 @@ log = "0.4"
 priority-queue = "0.5.2"
 actix = "0.7"
 failure = "0.1.3"
+futures = "0.1"
+tokio = "0.1"
+
+[dependencies.libp2p]
+git = "https://github.com/laohanlinux/rust-libp2p.git"

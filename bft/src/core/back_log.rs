@@ -18,7 +18,7 @@ use crate::consensus::types::{View, Subject, PrePrepare};
 use crate::consensus::validator::ImplValidatorSet;
 use super::core::Core;
 
-struct BackLogActor {
+pub struct BackLogActor {
     qp: HashMap<Address, PriorityQueue<GossipMessage, i64>>,
     core: Addr<Core>,
 }
@@ -89,4 +89,3 @@ impl BackLogActor {
         });
     }
 }
-

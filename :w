@@ -1,0 +1,10 @@
+extern crate bft;
+extern crate futures;
+extern crate libp2p;
+extern crate rand;
+extern crate tokio;
+
+use futures::prelude::*;
+use libp2p::mdns::{MdnsPacket, MdnsService};
+
+fn main() {}

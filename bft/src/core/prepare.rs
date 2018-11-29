@@ -14,17 +14,17 @@ use crate::{
 
 use super::{
     core::Core,
-    commit::Commit,
+    commit::HandleCommit,
 };
 
-pub trait Prepare {
+pub trait HandlePrepare {
     fn send_prepare(&self);
     fn verify_prepare(&mut self, prepare: &Subject, src: &Validator) -> ConsensusResult;
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult;
     fn accept(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult;
 }
 
-impl Prepare for Core {
+impl HandlePrepare for Core {
     fn send_prepare(&self) {
         let current_view = self.current_view();
         self.broadcast(&GossipMessage::new(
@@ -46,7 +46,7 @@ impl Prepare for Core {
         let subject: Subject = Subject::from_bytes(Cow::from(msg.msg()));
         self.check_message(MessageType::Prepare, &subject.view)?;
         self.verify_prepare(&subject, src)?;
-        <Core as Prepare>::accept(self, msg, src)?;
+        <Core as HandlePrepare>::accept(self, msg, src)?;
         // Add lock hash prove
         if self.current_state.is_locked() && subject.digest == *self.current_state.get_lock_hash().as_ref().unwrap() {
             self.current_state.lock_hash();

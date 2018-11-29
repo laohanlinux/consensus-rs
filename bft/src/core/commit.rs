@@ -18,7 +18,7 @@ use crate::{
 
 use std::borrow::Cow;
 
-pub trait Commit {
+pub trait HandleCommit {
     fn send_commit(&mut self);
     fn send_commit_for_old_block(&mut self, view: &View, digest: Hash);
     fn broadcast_commit(&mut self, sub: &Subject, seal: Hash);
@@ -33,7 +33,7 @@ pub trait Commit {
     fn accept(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError>;
 }
 
-impl Commit for Core {
+impl HandleCommit for Core {
     fn send_commit(&mut self) {
         let current_state = &self.current_state;
         let proposal = current_state.proposal().unwrap();
@@ -68,7 +68,7 @@ impl Commit for Core {
             Ok(sender) => {
                 let subject = Subject::from_bytes(Cow::from(msg.msg()));
                 self.verify_commit(msg.commit_seal.as_ref(), &subject, sender, src.clone())?;
-                <Core as Commit>::accept(self, msg, src)?;
+                <Core as HandleCommit>::accept(self, msg, src)?;
 
                 let val_set = self.val_set();
                 // receive more +2/3 votes
