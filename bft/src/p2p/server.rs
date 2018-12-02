@@ -3,8 +3,9 @@ use std::any::{Any, TypeId};
 use actix::prelude::*;
 use futures::prelude::*;
 use libp2p::{
-    Transport,
     core::upgrade::{self, OutboundUpgradeExt},
+    multiaddr::Protocol,
+    Transport,
     secio,
     mplex,
     tokio_codec::{FramedRead, LinesCodec},
@@ -14,16 +15,24 @@ use libp2p::{
     Multiaddr,
 };
 
-use crate::subscriber::P2PEvent;
-use crate::util::{TimerOp, TimerRuntime};
+use crate::{
+    common::multiaddr_to_ipv4,
+    subscriber::P2PEvent,
+    util::{TimerOp, TimerRuntime},
+};
+use super::session::{self, Session, TcpServer, TcpDial};
 
 #[derive(Message)]
-pub enum ServerEvent {}
+pub enum ServerEvent {
+    Connected(PeerId, Multiaddr),
+    Disconnected(PeerId, Multiaddr),
+}
 
 pub struct Server {
     pid: Addr<Server>,
-    key: secio::SecioKeyPair,
     peer_id: PeerId,
+    listen_addr: Multiaddr,
+    key: secio::SecioKeyPair,
     peers: HashMap<PeerId, Vec<Multiaddr>>,
 }
 
@@ -34,6 +43,20 @@ impl Actor for Server {
 impl Handler<ServerEvent> for Server {
     type Result = ();
     fn handle(&mut self, msg: ServerEvent, ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            ServerEvent::Connected(ref peer_id, ref mul_addr) => {
+                trace!("Connected peer: {:?}", peer_id);
+                if self.peers.contains_key(peer_id) {
+                    warn!("It should be happen");
+                    return ();
+                }
+                self.peers.entry(peer_id.clone()).or_insert(vec![mul_addr.clone()]);
+            }
+            ServerEvent::Disconnected(ref peer_id, ref mul_addr) => {
+                trace!("Disconnected peer: {:?}", peer_id);
+                self.peers.remove(&peer_id);
+            }
+        }
         ()
     }
 }
@@ -56,22 +79,19 @@ impl Handler<P2PEvent> for Server {
 
 impl Server {
     fn listen(&mut self) {
-//        let transport = libp2p::CommonTransport::new()
-//            .with_upgrade(secio::SecioConfig::new(self.key))
-//            .and_then(move |out, _| {
-//                let peer_id = out.remote_key.into_peer_id();
-//                let upgrade = mplex::MplexConfig::new().map_outbound(move |muxer| (peer_id, muxer) );
-//                upgrade::apply_outbound(out.stream, upgrade).map_err(|e| e.into_io_error())
-//            });
+        // start tcp server
+        session::TcpServer::new(self.peer_id.clone(), self.listen_addr.clone(), self.pid.clone());
+        trace!("Start listen on: {:?}", self.listen_addr);
     }
 
     fn add_peer(&mut self, remote_id: PeerId, remote_addresses: Vec<Multiaddr>) {
         if self.peers.contains_key(&remote_id) {
             return;
         }
-
-        // try to connect
+        // try to connect, dial it
+        TcpDial::new(remote_id, remote_addresses[0].clone(), self.pid.clone());
     }
 
+    // TODO
     fn drop_peer(&mut self, remote_id: PeerId, remote_addresses: Vec<Multiaddr>) {}
 }

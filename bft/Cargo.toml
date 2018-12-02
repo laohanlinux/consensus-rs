@@ -34,6 +34,10 @@ actix = "0.7"
 failure = "0.1.3"
 futures = "0.1"
 tokio = "0.1"
+bytes = "0.4"
 
 [dependencies.libp2p]
 git = "https://github.com/laohanlinux/rust-libp2p.git"
+
+[dependencies.tap]
+git = "https://git.myrrlyn.net/myrrlyn/tap"

@@ -11,6 +11,9 @@ use libp2p::Multiaddr;
 use libp2p::PeerId;
 use tokio::{codec::FramedRead, io::AsyncRead, io::WriteHalf, net::TcpListener, net::TcpStream};
 
+use crate::{
+    common::multiaddr_to_ipv4,
+};
 use super::codec::MsgPacketCodec;
 use super::protocol::RawMessage;
 use super::server::Server;
@@ -118,17 +121,7 @@ impl Actor for TcpDial {
 
 impl TcpDial {
     pub fn new(peer_id: PeerId, mul_addr: Multiaddr, server: Addr<Server>) {
-        let mut addr: String = "".to_string();
-        mul_addr.iter().for_each(|item| match &item {
-            Protocol::Ip4(ref ip4) => {
-                addr.push_str(&format!("{}:", ip4));
-            }
-            Protocol::Tcp(ref port) => {
-                addr.push_str(&format!("{}", port));
-            }
-            _ => {}
-        });
-        let socket_addr = net::SocketAddr::from_str(&addr).unwrap();
+        let socket_addr = multiaddr_to_ipv4(&mul_addr).unwrap();
         Arbiter::spawn(TcpStream::connect(&socket_addr).and_then(move |stream|{
             let peer_id = peer_id.clone();
             TcpServer::create( |ctx| {
