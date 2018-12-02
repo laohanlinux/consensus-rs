@@ -52,14 +52,7 @@ impl DiscoverService {
                     }
                     MdnsPacket::Response(response) => {
                         let peers_size = response.discovered_peers().count();
-                        println!("==============>{}", peers_size);
                         for peer in response.discovered_peers() {
-                            writeln!(
-                                io::stdout(),
-                                "mdsc packet, local->{:?}, remote->{:?}",
-                                peer_id.clone().to_base58(),
-                                peer.id().to_base58()
-                            );
                             let id = peer.id().clone();
                             if peer_id.clone() == id {
                                 continue;
@@ -80,10 +73,11 @@ impl DiscoverService {
         });
 
         Arbiter::spawn(future.then(|res| {
-            writeln!(io::stdout(), "Got request");
+            trace!("mDNS service exit");
             future::result(Ok(()))
         }));
 
+        trace!("Create mDSN service successfully");
         let p2p_subscriber = p2p_subscriber.clone();
         Actor::create(|_| DiscoverService {
             p2p_pid: p2p_subscriber,
@@ -118,7 +112,12 @@ mod tests {
         fn handle(&mut self, msg: P2PEvent, ctx: &mut Self::Context) {
             match msg {
                 P2PEvent::AddPeer(_, _) => {
-                    writeln!(io::stdout(), "{} work receive a msg: {:?}", chrono::Local::now(), msg);
+                    writeln!(
+                        io::stdout(),
+                        "{} work receive a msg: {:?}",
+                        chrono::Local::now(),
+                        msg
+                    );
                 }
                 P2PEvent::DropPeer(_, _) => {
                     writeln!(io::stdout(), "work receive a msg: {:?}", msg);
@@ -131,9 +130,7 @@ mod tests {
     fn t_discover_service() {
         let system = System::new("test");
         let p2p_subscriber = spawn_sync_subscriber();
-        let worker_pid = Worker::create(|_| {
-            Worker {}
-        });
+        let worker_pid = Worker::create(|_| Worker {});
         // register
         {
             let recipient = worker_pid.recipient();
