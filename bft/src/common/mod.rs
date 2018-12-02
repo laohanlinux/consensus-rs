@@ -4,10 +4,15 @@ use sha3::{Digest, Sha3_256};
 
 use std::env;
 use std::fmt::{self, Display};
+use std::net::{SocketAddr, AddrParseError};
 
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::merkle_tree::MerkleTree;
 use cryptocurrency_kit::storage::values::StorageValue;
+use libp2p::{
+    multiaddr::Protocol,
+    Multiaddr,
+};
 
 pub fn merkle_tree_root<T: StorageValue>(input: Vec<T>) -> Hash {
     let mut v: Vec<Vec<_>> = vec![];
@@ -58,4 +63,22 @@ pub fn random_dir() -> Box<String> {
         env::temp_dir().to_str().unwrap(),
         random::<u64>()
     ))
+}
+
+
+pub fn multiaddr_to_ipv4(mul_addr: &Multiaddr) -> Result<SocketAddr, AddrParseError> {
+    let mut ipv4: String = "".to_string();
+    let v = mul_addr.iter().collect::<Vec<_>>();
+    for protocol in v {
+        match protocol {
+            Protocol::Ip4(ref ip4) => {
+                ipv4.push_str(&format!("{}:", ip4));
+            }
+            Protocol::Tcp(ref port) => {
+                ipv4.push_str(&format!("{}", port));
+            }
+            _ => {}
+        }
+    }
+    ipv4.parse()
 }
