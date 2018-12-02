@@ -21,8 +21,8 @@ use super::{
     validator::{ImplValidatorSet, ValidatorSet},
 };
 use crate::{
+    core::ledger::Ledger,
     common::merkle_tree_root,
-    store::ledger::Ledger,
     types::block::{Block, Header},
     types::{Height, Validator, EMPTY_ADDRESS},
 };

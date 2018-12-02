@@ -4,11 +4,12 @@ use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use kvdb_rocksdb::{Database, DatabaseConfig, DatabaseIterator};
 use lru_time_cache::LruCache;
 
-use types::block::{Block, Header};
-use types::transaction::Transaction;
-use types::{Height, Validator};
-
-use super::schema::Schema;
+use crate::{
+    store::schema::Schema,
+    types::block::{Block, Header},
+    types::transaction::Transaction,
+    types::{Height, Validator},
+};
 
 pub struct LastMeta {
     height: Height,
