@@ -1,6 +1,7 @@
 #![feature(custom_attribute)]
 #![feature(nll)]
 #![feature(vec_remove_item)]
+#![feature(get_type_id)]
 
 extern crate serde;
 #[macro_use]
@@ -42,9 +43,11 @@ extern crate failure;
 extern crate futures;
 extern crate libp2p;
 extern crate tokio;
+extern crate bytes;
 
 
 pub mod common;
+pub mod util;
 pub mod consensus;
 pub mod types;
 pub mod store;
