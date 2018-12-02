@@ -105,7 +105,7 @@ mod tests {
         type Result = ();
         fn handle(&mut self, msg: RawMessage, _: &mut Self::Context) {
             use std::io::{self, Write};
-            writeln!(io::stdout(), "[{}] worker receive a msg: {:?}", self.name, msg);
+            writeln!(io::stdout(), "[{}] worker receive a msg: {:?}", self.name, msg).unwrap();
         }
     }
 

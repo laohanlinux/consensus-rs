@@ -3,6 +3,5 @@ mod entry;
 mod list_index;
 mod map_index;
 mod iter;
-mod schema;
+pub mod schema;
 mod types;
-pub mod ledger;
