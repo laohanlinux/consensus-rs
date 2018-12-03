@@ -24,8 +24,8 @@ use super::session::{self, Session, TcpServer, TcpDial};
 
 #[derive(Message)]
 pub enum ServerEvent {
-    Connected(PeerId, Multiaddr),
-    Disconnected(PeerId, Multiaddr),
+    Connected(PeerId),
+    Disconnected(PeerId),
 }
 
 pub struct Server {
@@ -33,7 +33,7 @@ pub struct Server {
     peer_id: PeerId,
     listen_addr: Multiaddr,
     key: Option<secio::SecioKeyPair>,
-    peers: HashMap<PeerId, Vec<Multiaddr>>,
+    peers: HashMap<PeerId, u8>,
 }
 
 impl Actor for Server {
@@ -43,21 +43,25 @@ impl Actor for Server {
         self.listen();
         info!("[{:?}] Server start, listen on: {:?}", self.peer_id, self.listen_addr);
     }
+
+    fn stopped(&mut self, ctx: &mut Self::Context) {
+        info!("[{:?}] Server stopped, listen on: {:?}", self.peer_id, self.listen_addr)
+    }
 }
 
 impl Handler<ServerEvent> for Server {
     type Result = ();
     fn handle(&mut self, msg: ServerEvent, ctx: &mut Self::Context) -> Self::Result {
         match msg {
-            ServerEvent::Connected(ref peer_id, ref mul_addr) => {
+            ServerEvent::Connected(ref peer_id) => {
                 trace!("Connected peer: {:?}", peer_id);
                 if self.peers.contains_key(peer_id) {
                     warn!("It should be happen");
                     return ();
                 }
-                self.peers.entry(peer_id.clone()).or_insert(vec![mul_addr.clone()]);
+                self.peers.entry(peer_id.clone()).or_insert(0);
             }
-            ServerEvent::Disconnected(ref peer_id, ref mul_addr) => {
+            ServerEvent::Disconnected(ref peer_id) => {
                 trace!("Disconnected peer: {:?}", peer_id);
                 self.peers.remove(&peer_id);
             }
@@ -72,10 +76,10 @@ impl Handler<P2PEvent> for Server {
     fn handle(&mut self, msg: P2PEvent, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             P2PEvent::AddPeer(remote_peer, remote_addresses) => {
-                self.peers.entry(remote_peer).or_insert(remote_addresses);
+                self.add_peer(remote_peer, remote_addresses);
             }
-            P2PEvent::DropPeer(remote_peer, _) => {
-                self.peers.remove_entry(&remote_peer);
+            P2PEvent::DropPeer(remote_peer, remote_addresses) => {
+                self.drop_peer(remote_peer, remote_addresses);
             }
         }
         ()
