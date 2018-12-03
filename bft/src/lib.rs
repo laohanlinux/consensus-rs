@@ -31,8 +31,10 @@ extern crate cryptocurrency_kit;
 extern crate lru_time_cache;
 extern crate kvdb_rocksdb;
 extern crate kvdb;
+extern crate transaction_pool;
 extern crate byteorder;
 extern crate priority_queue;
+extern crate evmap;
 #[macro_use]
 extern crate actix;
 #[macro_use]
@@ -47,6 +49,7 @@ extern crate libp2p;
 extern crate tokio;
 extern crate bytes;
 extern crate toml;
+extern crate parking_lot;
 
 pub mod common;
 pub mod util;
@@ -56,6 +59,7 @@ pub mod store;
 pub mod core;
 pub mod protocol;
 pub mod p2p;
+pub mod error;
 #[macro_use]
 pub mod subscriber;
 pub mod cmd;
