@@ -10,6 +10,7 @@ use actix::prelude::*;
 use toml::Value as Toml;
 use libp2p::{PeerId, Multiaddr};
 use parking_lot::RwLock;
+use futures::Future;
 
 use crate::{
     logger::init_log,
@@ -21,6 +22,7 @@ use crate::{
     },
     config::Config,
     core::tx_pool::{BaseTxPool, TxPool},
+    subscriber::*,
 };
 
 pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
@@ -34,9 +36,10 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
 
     let _: JoinHandle<Result<(), String>> = spawn(move || {
         let system = System::new("bft-rs");
-        init_p2p_service(&config);
-        init_tcp_server(&config);
-        crate::util::TimerRuntime::new(Duration::from_secs(50));
+        let p2p_event_notify = init_p2p_event_notify();
+        let discover_pid = init_p2p_service(p2p_event_notify.clone(), &config);
+        init_tcp_server(p2p_event_notify.clone(), &config);
+        crate::util::TimerRuntime::new(Duration::from_secs(150));
         system.run();
         sender.send(()).unwrap();
         Ok(())
@@ -46,21 +49,37 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
 }
 
 
-fn init_p2p_service(config: &Config) {
-    let p2p_subscriber = spawn_sync_subscriber();
+fn init_p2p_event_notify() -> Addr<ProcessSignals> {
+    info!("Init p2p event nofity");
+    spawn_sync_subscriber()
+}
+
+fn init_p2p_service(p2p_subscriber: Addr<ProcessSignals>, config: &Config) -> Addr<DiscoverService> {
     let peer_id = PeerId::from_str(&config.peer_id).unwrap();
     let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
     let discover_service = DiscoverService::spawn_discover_service(p2p_subscriber, peer_id, mul_addr, config.ttl);
     info!("Init p2p service successfully");
+    discover_service
 }
 
-fn init_tcp_server(config: &Config) {
+fn init_tcp_server(p2p_subscriber: Addr<ProcessSignals>, config: &Config) {
     let peer_id = PeerId::from_str(&config.peer_id).unwrap();
     let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
-    Server::create(|ctx| {
+    let server = Server::create(|ctx| {
         let pid = ctx.address();
         Server::new(Some(pid), peer_id, mul_addr, None)
     });
+    // subscriber p2p event, sync operation
+    {
+        let recipient = server.recipient();
+        // register
+        let message = SubscribeMessage::SubScribe(recipient);
+        let request_fut = p2p_subscriber.send(message);
+        Arbiter::spawn(request_fut.and_then(|result| {
+            info!("Subsribe p2p discover event successfully");
+            futures::future::ok(())
+        }).map_err(|err| unimplemented!("{}", err)));
+    }
     info!("Init tcp server successfully");
 }
 

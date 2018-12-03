@@ -61,6 +61,7 @@ impl DiscoverService {
                             for address in peer.addresses() {
                                 addresses.push(address.clone());
                             }
+                            trace!("Get a message from mDNS, local-id:{:?}, remote-id:{:?}", peer_id, id);
                             // if the receiver actor's mailbox is full, ignore message
                             p2p_subscriber_clone.try_send(P2PEvent::AddPeer(id, addresses));
                         }

@@ -43,6 +43,7 @@ macro_rules! impl_subscribe_handler {
         impl Handler<$key> for ProcessSignals {
             type Result = ();
             fn handle(&mut self, msg: $key, _: &mut Self::Context) {
+                trace!("Receive a notify message");
                 self.distribute(msg);
             }
         }
@@ -51,6 +52,7 @@ macro_rules! impl_subscribe_handler {
             type Result = ();
 
             fn handle(&mut self, msg: SubscribeMessage, _: &mut Self::Context) {
+                trace!("Receive a subscibe message");
                 match msg {
                     SubscribeMessage::SubScribe(recipient) => {
                         self.subscribe(recipient);

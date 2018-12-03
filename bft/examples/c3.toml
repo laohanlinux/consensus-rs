@@ -1,0 +1,6 @@
+ip = "127.0.0.1"
+port = 7693
+block_period = 3000 # ms
+request_time = 3000 # ms
+peer_id = "QmZREuJee6NMFpYGroctffcwUVDAYmt3mB1eisSVqVVfwA"
+ttl = 3000

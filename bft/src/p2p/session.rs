@@ -16,14 +16,14 @@ use crate::{
 };
 use super::codec::MsgPacketCodec;
 use super::protocol::RawMessage;
-use super::server::Server;
+use super::server::{Server, ServerEvent};
 
 pub const MAX_OUTBOUND_CONNECTION_MAILBOX: usize = 1 << 10;
 pub const MAX_INBOUND_CONNECTION_MAILBOX: usize = 1 << 9;
 
 pub struct Session {
-    id: PeerId,
-    addr: Addr<Server>,
+    peer_id: PeerId,
+    server: Addr<Server>,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, MsgPacketCodec>,
 }
 
@@ -31,7 +31,13 @@ impl Actor for Session {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        self.server.do_send(ServerEvent::Connected(self.peer_id.clone()));
         trace!("P2P session created");
+    }
+
+    fn stopped(&mut self, ctx: &mut Self::Context) {
+        self.server.do_send(ServerEvent::Disconnected(self.peer_id.clone()));
+        trace!("P2P session stopped");
     }
 }
 
@@ -62,8 +68,8 @@ impl Session {
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, MsgPacketCodec>,
     ) -> Session {
         Session {
-            id: self_peer_id,
-            addr: addr,
+            peer_id: self_peer_id,
+            server: addr,
             framed: framed,
         }
     }
@@ -122,15 +128,22 @@ impl Actor for TcpDial {
 impl TcpDial {
     pub fn new(peer_id: PeerId, mul_addr: Multiaddr, server: Addr<Server>) {
         let socket_addr = multiaddr_to_ipv4(&mul_addr).unwrap();
-        Arbiter::spawn(TcpStream::connect(&socket_addr).and_then(move |stream|{
+        trace!("Try to dial remote peer, peer_id:{:?}, network: {:?}", &peer_id, &socket_addr);
+        Arbiter::spawn(TcpStream::connect(&socket_addr).and_then(move |stream| {
+            trace!("Dialing remote peer");
             let peer_id = peer_id.clone();
-            TcpServer::create( |ctx| {
+            TcpServer::create(move |ctx| {
+                let peer_id_clone = peer_id.clone();
                 ctx.set_mailbox_capacity(MAX_OUTBOUND_CONNECTION_MAILBOX);
-                let request = ctx.address().send(TcpConnect(stream, peer_id)).wait().unwrap();
-                TcpServer{server}
+                let request = ctx.address().send(TcpConnect(stream, peer_id_clone));
+                Arbiter::spawn(request.and_then(|_| {
+                    futures::future::ok(())
+                }).map_err(|_| ()));
+                trace!("Dial remote peer successfully, peer_id:{:?}", peer_id);
+                TcpServer { server }
             });
             futures::future::ok(())
-        }).map_err(|e|{
+        }).map_err(|e| {
             error!("Dial tcp connect fail, err: {}", e);
             ()
         }));
@@ -145,6 +158,7 @@ impl Handler<TcpConnect> for TcpServer {
     type Result = ();
 
     fn handle(&mut self, msg: TcpConnect, _: &mut Context<Self>) {
+        trace!("TcpServer receive tcp connect event, peerid: {:?}", msg.1);
         // For each incoming connection we create `session` actor with out chat server
         let server = self.server.clone();
         Session::create(|ctx| {
@@ -166,14 +180,14 @@ mod tests {
     use super::Server;
 
     #[test]
-    fn t_tcp_server(){
+    fn t_tcp_server() {
         let peer_id = PeerId::random();
         let mul_addr = Multiaddr::from_str("/ip4/127.0.0.1/tcp/5678").unwrap();
         println!("{:?}, {:?}", peer_id, mul_addr);
         crate::logger::init_test_env_log();
         let system = System::new("tt");
 
-        let server = Server::create( move|ctx| {
+        let server = Server::create(move |ctx| {
             let pid = ctx.address();
             let peer_id = peer_id.clone();
             Server::new(Some(pid), peer_id, mul_addr, None)
