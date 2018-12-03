@@ -12,7 +12,6 @@ use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::hash::Hash as StdHash;
 use std::io::Cursor;
 use std::time::Duration;
 

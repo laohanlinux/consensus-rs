@@ -98,6 +98,10 @@ impl Transaction {
         recover_bytes(self.signature.as_ref().unwrap(), &payload).is_ok()
     }
 
+    pub fn set_hash(&mut self, hash: Hash) {
+        self.hash = Some(hash)
+    }
+
     pub fn set_signature(&mut self, sign: &Signature) {
         self.signature = Some(sign.clone());
     }
@@ -108,6 +112,14 @@ impl Transaction {
 
     pub fn hash_payload(&self) -> Vec<u8> {
         TransactionSignature::packet_hash(&self)
+    }
+}
+
+impl Eq for Transaction {}
+
+impl PartialEq for Transaction {
+    fn eq(&self, other: &Transaction) -> bool {
+        self.get_hash().unwrap() == other.get_hash().unwrap()
     }
 }
 

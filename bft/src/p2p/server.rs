@@ -29,15 +29,20 @@ pub enum ServerEvent {
 }
 
 pub struct Server {
-    pid: Addr<Server>,
+    pid: Option<Addr<Server>>,
     peer_id: PeerId,
     listen_addr: Multiaddr,
-    key: secio::SecioKeyPair,
+    key: Option<secio::SecioKeyPair>,
     peers: HashMap<PeerId, Vec<Multiaddr>>,
 }
 
 impl Actor for Server {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.listen();
+        info!("[{:?}] Server start, listen on: {:?}", self.peer_id, self.listen_addr);
+    }
 }
 
 impl Handler<ServerEvent> for Server {
@@ -78,9 +83,19 @@ impl Handler<P2PEvent> for Server {
 }
 
 impl Server {
+    pub fn new(pid: Option<Addr<Server>>, peer_id: PeerId, listen: Multiaddr, key: Option<secio::SecioKeyPair>) -> Self {
+        Server {
+            pid,
+            peer_id,
+            listen_addr: listen,
+            key,
+            peers: HashMap::new(),
+        }
+    }
+
     fn listen(&mut self) {
         // start tcp server
-        session::TcpServer::new(self.peer_id.clone(), self.listen_addr.clone(), self.pid.clone());
+        session::TcpServer::new(self.peer_id.clone(), self.listen_addr.clone(), self.pid.as_ref().unwrap().clone());
         trace!("Start listen on: {:?}", self.listen_addr);
     }
 
@@ -89,7 +104,7 @@ impl Server {
             return;
         }
         // try to connect, dial it
-        TcpDial::new(remote_id, remote_addresses[0].clone(), self.pid.clone());
+        TcpDial::new(remote_id, remote_addresses[0].clone(), self.pid.as_ref().unwrap().clone());
     }
 
     // TODO
