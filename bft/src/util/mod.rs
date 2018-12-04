@@ -18,6 +18,7 @@ impl Actor for TimerRuntime {
     fn started(&mut self, ctx: &mut Context<Self>) {
         ctx.run_interval(self.timeout, |act, _| {
             System::current().stop();
+            ::std::process::exit(0);
         });
     }
 }

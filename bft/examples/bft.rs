@@ -3,7 +3,9 @@ extern crate bft;
 extern crate clap;
 #[macro_use]
 extern crate log;
+extern crate actix;
 
+use actix::prelude::*;
 use clap::{Arg, App, SubCommand, ArgMatches};
 
 use std::sync::mpsc::channel;
@@ -27,6 +29,7 @@ fn main() {
     if let Err(err) = result {
         println!("{}", err);
     }
+
 }
 
 fn run(matches: ArgMatches) -> Result<(), String> {

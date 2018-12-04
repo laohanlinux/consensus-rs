@@ -1,12 +1,12 @@
 use actix::prelude::*;
 
 use super::{
-    server::{Server, ServerEvent},
+    server::{TcpServer, ServerEvent},
     discover_service::DiscoverService,
 };
 
 pub struct Node {
-    server: Addr<Server>,
+    server: Addr<TcpServer>,
     discover_service: Addr<DiscoverService>,
 }
 
