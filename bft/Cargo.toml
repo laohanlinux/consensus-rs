@@ -42,6 +42,9 @@ clap = "2.32.0"
 toml = "0.4"
 serde_millis = "0.1.1"
 parking_lot = {version = "0.6", features = ["nightly"]}
+uuid = { version = "0.7", features = ["v5"] }
+flame = "0.2.2"
+tokio-signal = "0.2"
 
 [dependencies.libp2p]
 git = "https://github.com/laohanlinux/rust-libp2p.git"

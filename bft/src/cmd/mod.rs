@@ -18,11 +18,13 @@ use crate::{
         discover_service::DiscoverService,
         P2PEvent,
         spawn_sync_subscriber,
-        server::Server,
+        server::TcpServer,
     },
     config::Config,
     core::tx_pool::{BaseTxPool, TxPool},
     subscriber::*,
+    common::random_dir,
+    pprof::spawn_signal_handler,
 };
 
 pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
@@ -44,7 +46,7 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
         sender.send(()).unwrap();
         Ok(())
     });
-
+    init_signal_handle();
     Ok(())
 }
 
@@ -65,10 +67,9 @@ fn init_p2p_service(p2p_subscriber: Addr<ProcessSignals>, config: &Config) -> Ad
 fn init_tcp_server(p2p_subscriber: Addr<ProcessSignals>, config: &Config) {
     let peer_id = PeerId::from_str(&config.peer_id).unwrap();
     let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
-    let server = Server::create(|ctx| {
-        let pid = ctx.address();
-        Server::new(Some(pid), peer_id, mul_addr, None)
-    });
+    let server = TcpServer::new(peer_id, mul_addr, None);
+
+
     // subscriber p2p event, sync operation
     {
         let recipient = server.recipient();
@@ -96,4 +97,8 @@ fn init_config(config: &str) -> Result<Config, String> {
 fn init_transaction_pool(_: &Config) -> Box<TxPool> {
     info!("Init transaction pool successfully");
     Box::new(BaseTxPool::new())
+}
+
+fn init_signal_handle() {
+    spawn_signal_handler(*random_dir());
 }

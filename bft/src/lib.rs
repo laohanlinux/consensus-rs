@@ -13,7 +13,6 @@ extern crate rmp;
 extern crate rmp_serde as rmps;
 #[macro_use]
 extern crate runtime_fmt;
-
 extern crate bigint;
 extern crate rand;
 extern crate chrono;
@@ -47,9 +46,12 @@ extern crate failure;
 extern crate futures;
 extern crate libp2p;
 extern crate tokio;
+extern crate tokio_signal;
 extern crate bytes;
 extern crate toml;
 extern crate parking_lot;
+extern crate uuid;
+extern crate flame;
 
 pub mod common;
 pub mod util;
@@ -60,6 +62,7 @@ pub mod core;
 pub mod protocol;
 pub mod p2p;
 pub mod error;
+pub mod pprof;
 #[macro_use]
 pub mod subscriber;
 pub mod cmd;
