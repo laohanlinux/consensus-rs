@@ -50,6 +50,7 @@ extern crate tokio;
 extern crate bytes;
 extern crate toml;
 extern crate parking_lot;
+extern crate uuid;
 
 pub mod common;
 pub mod util;

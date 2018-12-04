@@ -161,6 +161,7 @@ impl Handler<TcpConnect> for TcpServer {
         trace!("TcpServer receive tcp connect event, peerid: {:?}", msg.1);
         // For each incoming connection we create `session` actor with out chat server
         let server = self.server.clone();
+
         Session::create(|ctx| {
             let (r, w) = msg.0.split();
             Session::add_stream(FramedRead::new(r, MsgPacketCodec), ctx);

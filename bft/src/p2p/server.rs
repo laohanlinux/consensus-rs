@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+
 use std::any::{Any, TypeId};
 use actix::prelude::*;
 use futures::prelude::*;
+use uuid::Uuid;
 use libp2p::{
     core::upgrade::{self, OutboundUpgradeExt},
     multiaddr::Protocol,
@@ -34,6 +36,7 @@ pub struct Server {
     listen_addr: Multiaddr,
     key: Option<secio::SecioKeyPair>,
     peers: HashMap<PeerId, u8>,
+    dial_peers: HashMap<PeerId, Uuid>,
 }
 
 impl Actor for Server {
@@ -42,6 +45,12 @@ impl Actor for Server {
     fn started(&mut self, ctx: &mut Self::Context) {
         self.listen();
         info!("[{:?}] Server start, listen on: {:?}", self.peer_id, self.listen_addr);
+        ctx.run_interval(::std::time::Duration::from_secs(2), move |act, ctx| {
+            let peers: String = act.peers.keys().map(|key| key.to_base58()).collect::<Vec<String>>().join(",");
+            info!("Connect clients: {}, [{}]", act.peers.len(), peers);
+            let dia_peers: String = act.dial_peers.keys().map(|key| key.to_base58()).collect::<Vec<String>>().join(",");
+            info!("Dialing clients: {}, [{}]", act.dial_peers.len(), dia_peers);
+        });
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
@@ -60,10 +69,12 @@ impl Handler<ServerEvent> for Server {
                     return ();
                 }
                 self.peers.entry(peer_id.clone()).or_insert(0);
+                self.dial_peers.remove(peer_id);
             }
             ServerEvent::Disconnected(ref peer_id) => {
                 trace!("Disconnected peer: {:?}", peer_id);
                 self.peers.remove(&peer_id);
+                self.dial_peers.remove(peer_id);
             }
         }
         ()
@@ -94,6 +105,7 @@ impl Server {
             listen_addr: listen,
             key,
             peers: HashMap::new(),
+            dial_peers: HashMap::new(),
         }
     }
 
@@ -104,6 +116,11 @@ impl Server {
     }
 
     fn add_peer(&mut self, remote_id: PeerId, remote_addresses: Vec<Multiaddr>) {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_DNS, chrono::Local::now().to_string().as_bytes());
+        if *self.dial_peers.entry(remote_id.clone()).or_insert(id) == id {
+            return;
+        }
+
         if self.peers.contains_key(&remote_id) {
             return;
         }
