@@ -160,30 +160,3 @@ impl Session {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Server;
-    use super::*;
-
-    #[test]
-    fn t_tcp_server() {
-        let peer_id = PeerId::random();
-        let mul_addr = Multiaddr::from_str("/ip4/127.0.0.1/tcp/5678").unwrap();
-        println!("{:?}, {:?}", peer_id, mul_addr);
-        crate::logger::init_test_env_log();
-        let system = System::new("tt");
-
-        let server = Server::create(move |ctx| {
-            let pid = ctx.address();
-            let peer_id = peer_id.clone();
-            Server::new(Some(pid), peer_id, mul_addr, None)
-        });
-        //        tokio::spawn(futures::lazy(||{
-        //            System::current().stop();
-        //            futures::future::ok(())
-        //        }));
-        crate::util::TimerRuntime::new(Duration::from_secs(10));
-        system.run();
-    }
-}

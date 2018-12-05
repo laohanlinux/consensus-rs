@@ -87,3 +87,29 @@ pub fn random_uuid() -> uuid::Uuid {
     use uuid::Uuid;
     Uuid::new_v5(&Uuid::NAMESPACE_DNS, chrono::Local::now().to_string().as_bytes())
 }
+
+
+use ethereum_types::{Address, H160};
+
+pub fn string_to_address(s: &String) -> Result<Address, String> {
+    if s.len() < 40 {
+        return Err("less than 40 chars".to_string());
+    }
+    if s.len() > 42 {
+        return Err("more than 42 chars".to_string());
+    }
+
+    if s.len() == 42 {
+        return Ok(Address::from(s[2..].as_bytes()));
+    }
+    Ok(Address::from(s.as_bytes()))
+}
+
+pub fn strings_to_addresses(strs: &Vec<String>) -> Result<Vec<Address>, String> {
+    let mut addresses= Vec::new();
+    for str in strs {
+        let address = string_to_address(str)?;
+        addresses.push(address);
+    }
+    Ok(addresses)
+}

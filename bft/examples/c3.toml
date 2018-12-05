@@ -4,3 +4,23 @@ block_period = 3000 # ms
 request_time = 3000 # ms
 peer_id = "QmZREuJee6NMFpYGroctffcwUVDAYmt3mB1eisSVqVVfwA"
 ttl = 3000
+store = "/tmp/block/c3"
+
+[genesis]
+block_hash = "dddddd"
+validator = ["0x5701fbd05e77cac003a6894e4b2a3c12287ed313", "0x6510f8d84c0b8b3091fc3abe2fdff6036c90865d", "0x3140bda54df92f9453b487afdb3bcce02d154c74", "0x7035dafbeac1792ab5b7ed5c903ac63522eb534a","0x6730933a2cb6f26af786d7f5979efbdf29049c3a"]
+epoch_time = 2018-09-09T09:09:09.09-09:09
+proposer = "0x5701fbd05e77cac003a6894e4b2a3c12287ed313"
+gas_used = 10000
+extra = "Hello Word!"
+    [genesis.accounts]
+    0x5701fbd05e77cac003a6894e4b2a3c12287ed313 = 500000
+    0x6510f8d84c0b8b3091fc3abe2fdff6036c90865d = 500000
+    0x3140bda54df92f9453b487afdb3bcce02d154c74 = 500000
+    0x7035dafbeac1792ab5b7ed5c903ac63522eb534a = 500000
+    0x6730933a2cb6f26af786d7f5979efbdf29049c3a = 500000
+    0xfb1bbe89190c9793aec79713e35bdd82a7e5b08b = 500000
+    0x1f6f0d11339b5a0db7cef22ae278c15d55178faf = 500000
+    0x17f3309f405f53ae3e3c7e98533c58aa0c8c9417 = 500000
+    0x6e6e4a7aa7cedac4c4f3e8a7cd363e5f3208e8a6 = 500000
+    0x91b73cc738754c4fd7d6a2f0b6b354e293177c80 = 500000
