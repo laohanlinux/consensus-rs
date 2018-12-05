@@ -5,3 +5,13 @@ pub enum TxPoolError {
     #[fail(display = "More than max txpool limit, max:{}", _0)]
     MoreThanMaxSIZE(u64),
 }
+
+#[derive(Debug, Fail)]
+pub enum P2PError {
+    #[fail(display = "Handshake fail")]
+    HandShakeFailed,
+    #[fail(display = "Dump connected")]
+    DumpConnected,
+    #[fail(display = "Invalid Message type")]
+    InvalidMessage,
+}

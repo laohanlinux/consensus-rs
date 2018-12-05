@@ -82,3 +82,8 @@ pub fn multiaddr_to_ipv4(mul_addr: &Multiaddr) -> Result<SocketAddr, AddrParseEr
     }
     ipv4.parse()
 }
+
+pub fn random_uuid() -> uuid::Uuid {
+    use uuid::Uuid;
+    Uuid::new_v5(&Uuid::NAMESPACE_DNS, chrono::Local::now().to_string().as_bytes())
+}
