@@ -99,3 +99,20 @@ pub fn encrypt_commit_bytes(digest: &Hash, secret: &Secret) -> Signature {
     let digest = hash(buffer);
     digest.sign(secret).unwrap()
 }
+
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+    use cryptocurrency_kit::ethkey::KeyPair;
+    use cryptocurrency_kit::ethkey::Generator;
+    use cryptocurrency_kit::ethkey::Random;
+
+    #[test]
+    fn t_random() {
+        (0..10).for_each(|_|{
+            let keypair = Random{}.generate().unwrap();
+            println!("{:?}", keypair.address());
+        });
+    }
+}

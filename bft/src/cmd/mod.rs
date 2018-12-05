@@ -11,6 +11,8 @@ use toml::Value as Toml;
 use libp2p::{PeerId, Multiaddr};
 use parking_lot::RwLock;
 use futures::Future;
+use lru_time_cache::LruCache;
+use kvdb_rocksdb::Database;
 
 use crate::{
     logger::init_log,
@@ -23,8 +25,13 @@ use crate::{
     config::Config,
     core::tx_pool::{BaseTxPool, TxPool},
     subscriber::*,
-    common::random_dir,
+    common,
+    core::ledger::{Ledger, LastMeta},
+    core::chain::Chain,
+    error::ChainResult,
+    store::schema::Schema,
     pprof::spawn_signal_handler,
+    types::Validator,
 };
 
 pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
@@ -34,6 +41,12 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
         return Err(result.err().unwrap());
     }
     let config = result.unwrap();
+    println!("{:?}", config);
+    let ledger = Arc::new(RwLock::new(init_store(&config)?));
+    let mut chain = Chain::new(config.clone(), ledger);
+    init_genesis(&mut chain).map_err(|err|format!("{}", err))?;
+    info!("Genesis hash: {:?}", chain.get_genesis().hash());
+
     let tx_pool = Arc::new(RwLock::new(init_transaction_pool(&config)));
 
     let _: JoinHandle<Result<(), String>> = spawn(move || {
@@ -99,6 +112,30 @@ fn init_transaction_pool(_: &Config) -> Box<TxPool> {
     Box::new(BaseTxPool::new())
 }
 
+fn init_store(config: &Config) -> Result<Ledger, String> {
+    info!("Init store: {}", config.store);
+    let genesis_config = config.genesis.as_ref().unwrap();
+
+    let mut validators: Vec<Validator> = vec![];
+    for validator in &genesis_config.validator {
+        validators.push(Validator::new(common::string_to_address(validator)?));
+    }
+
+    let database = Database::open_default(&config.store).map_err(|err| err.to_string())?;
+    let schema = Schema::new(Arc::new(database));
+    Ok(Ledger::new(
+        LastMeta::new_zero(),
+        LruCache::with_capacity(1 << 10),
+        LruCache::with_capacity(1 << 10),
+        validators,
+        schema))
+}
+
+fn init_genesis(chain: &mut Chain) -> ChainResult {
+    info!("Init genesis block");
+    chain.store_genesis_block()
+}
+
 fn init_signal_handle() {
-    spawn_signal_handler(*random_dir());
+    spawn_signal_handler(*common::random_dir());
 }

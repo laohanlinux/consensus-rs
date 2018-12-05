@@ -1,8 +1,7 @@
-use std::sync::RwLock;
-
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use kvdb_rocksdb::{Database, DatabaseConfig, DatabaseIterator};
 use lru_time_cache::LruCache;
+use parking_lot::RwLock;
 
 use crate::{
     store::schema::Schema,
@@ -43,6 +42,7 @@ pub struct Ledger {
     meta: LastMeta,
     header_cache: RwLock<LruCache<Hash, Header>>,
     block_cache: RwLock<LruCache<Hash, Block>>,
+    genesis: Option<Block>,
     validators: Vec<Validator>,
     schema: Schema,
 }
@@ -59,6 +59,7 @@ impl Ledger {
             meta,
             header_cache: RwLock::new(header_cache),
             block_cache: RwLock::new(block_cache),
+            genesis: None,
             validators,
             schema,
         }
@@ -66,6 +67,10 @@ impl Ledger {
 
     pub fn get_transaction(&self, tx_hash: &Hash) -> Option<Transaction> {
         self.schema.transaction().get(tx_hash)
+    }
+
+    pub fn get_genesis_block(&self) -> Option<&Block> {
+        self.genesis.as_ref()
     }
 
     pub fn get_last_block_height(&self) -> &Height {
@@ -89,7 +94,7 @@ impl Ledger {
     }
 
     pub fn get_block_header(&self, block_hash: &Hash) -> Option<Header> {
-        let mut cache = self.header_cache.write().unwrap();
+        let mut cache = self.header_cache.write();
         if let Some(header) = cache.get_mut(block_hash) {
             return Some(header.clone());
         }
@@ -101,7 +106,7 @@ impl Ledger {
     }
 
     pub fn get_block(&self, block_hash: &Hash) -> Option<Block> {
-        let mut cache = self.block_cache.write().unwrap();
+        let mut cache = self.block_cache.write();
         let block = cache.get(block_hash);
         if block.is_none() {
             let db = self.schema.blocks();
@@ -121,14 +126,13 @@ impl Ledger {
 
     pub fn get_block_by_height(&self, height: Height) -> Option<Block> {
         if let Some(hash) = self.schema.block_hash_by_height(height) {
-            if let Some(block) = self.block_cache.write().unwrap().get(&hash) {
+            if let Some(block) = self.block_cache.write().get(&hash) {
                 return Some(block.clone());
             }
             if let Some(block) = self.schema.blocks().get(&hash) {
                 // cache it
                 self.block_cache
                     .write()
-                    .unwrap()
                     .insert(hash, block.clone());
                 return Some(block.clone());
             }
@@ -138,19 +142,28 @@ impl Ledger {
 
     pub fn get_header_by_height(&self, height: Height) -> Option<Header> {
         if let Some(block_hash) = self.schema.block_hash_by_height(height) {
-            if let Some(header) = self.header_cache.write().unwrap().get(&block_hash) {
+            if let Some(header) = self.header_cache.write().get(&block_hash) {
                 return Some(header.clone());
             }
             if let Some(block) = self.schema.blocks().get(&block_hash) {
                 // cache it
                 self.header_cache
                     .write()
-                    .unwrap()
                     .insert(block_hash, block.header().clone());
                 return Some(block.header().clone());
             }
         }
         None
+    }
+
+    pub fn add_genesis_block(&mut self, block: &Block) {
+        let hash = block.hash();
+        // persists
+        let mut block_db = self.schema.blocks();
+        block_db.put(&hash, block.clone());
+        let mut heigh_db = self.schema.block_hashes_by_height();
+        heigh_db.push(hash.clone());
+        self.genesis = Some(block.clone());
     }
 
     pub fn add_block(&mut self, block: &Block) {
@@ -174,12 +187,18 @@ impl Ledger {
         // cache it
         self.header_cache
             .get_mut()
-            .unwrap()
             .insert(hash, header.clone());
         self.block_cache
             .get_mut()
-            .unwrap()
             .insert(hash, block.clone());
+    }
+
+    pub fn load_genesis(&mut self) {
+        if self.genesis.is_some() {
+            return;
+        }
+        let block = self.get_block_by_height(0).unwrap();
+        self.genesis = Some(block);
     }
 
     pub fn get_schema(&self) -> &Schema {

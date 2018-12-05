@@ -15,3 +15,11 @@ pub enum P2PError {
     #[fail(display = "Invalid Message type")]
     InvalidMessage,
 }
+
+pub type ChainResult = Result<(), ChainError>;
+
+#[derive(Debug, Fail)]
+pub enum ChainError{
+    #[fail(display = "An unknown error has occurred, ({})", _0)]
+    Unknown(String),
+}

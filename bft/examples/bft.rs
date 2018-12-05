@@ -29,7 +29,6 @@ fn main() {
     if let Err(err) = result {
         println!("{}", err);
     }
-
 }
 
 fn run(matches: ArgMatches) -> Result<(), String> {
@@ -44,7 +43,7 @@ fn run(matches: ArgMatches) -> Result<(), String> {
 fn run_start(matches: &ArgMatches) -> Result<(), String> {
     let config = matches.value_of("config").expect("config is None");
     let (tx, rx) = channel();
-    bft::cmd::start_node(config, tx);
+    bft::cmd::start_node(config, tx)?;
     rx.recv().unwrap();
     Ok(())
 }
