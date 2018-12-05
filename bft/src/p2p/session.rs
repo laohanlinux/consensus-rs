@@ -13,10 +13,11 @@ use futures::Stream;
 use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
+use cryptocurrency_kit::crypto::Hash;
 use tokio::{codec::FramedRead, io::AsyncRead, io::WriteHalf, net::TcpListener, net::TcpStream};
 
 use super::codec::MsgPacketCodec;
-use super::protocol::{BoundType, Handshake, Header, P2PMsgCode, RawMessage};
+use super::protocol::{BoundType, RawMessage, Header, P2PMsgCode, Handshake};
 use super::server::{ServerEvent, TcpServer};
 use crate::common::multiaddr_to_ipv4;
 use crate::error::P2PError;
@@ -28,6 +29,7 @@ pub struct Session {
     server: Addr<TcpServer>,
     bound_type: BoundType,
     handshaked: bool,
+    genesis: Hash,
     framed: actix::io::FramedWrite<WriteHalf<TcpStream>, MsgPacketCodec>,
 }
 
@@ -38,7 +40,7 @@ impl Actor for Session {
         // send a handshake message
         {
             let peer_id = self.local_id.clone();
-            let handshake = Handshake::new("0.1.1".to_string(), peer_id.clone());
+            let handshake = Handshake::new("0.1.1".to_string(), peer_id.clone(), self.genesis.clone());
             let raw_message = RawMessage::new(
                 Header::new(
                     P2PMsgCode::Handshake,
@@ -148,6 +150,7 @@ impl Session {
         server: Addr<TcpServer>,
         framed: actix::io::FramedWrite<WriteHalf<TcpStream>, MsgPacketCodec>,
         bound_type: BoundType,
+        genesis: Hash,
     ) -> Session {
         Session {
             pid: Some(self_pid),
@@ -157,6 +160,7 @@ impl Session {
             handshaked: false,
             framed: framed,
             bound_type: bound_type,
+            genesis: genesis,
         }
     }
 }

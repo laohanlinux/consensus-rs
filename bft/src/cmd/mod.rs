@@ -13,6 +13,7 @@ use parking_lot::RwLock;
 use futures::Future;
 use lru_time_cache::LruCache;
 use kvdb_rocksdb::Database;
+use cryptocurrency_kit::crypto::Hash;
 
 use crate::{
     logger::init_log,
@@ -20,7 +21,7 @@ use crate::{
         discover_service::DiscoverService,
         P2PEvent,
         spawn_sync_subscriber,
-        server::TcpServer,
+        server::{TcpServer, author_handshake, author_fn},
     },
     config::Config,
     core::tx_pool::{BaseTxPool, TxPool},
@@ -44,7 +45,8 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
     println!("{:?}", config);
     let ledger = Arc::new(RwLock::new(init_store(&config)?));
     let mut chain = Chain::new(config.clone(), ledger);
-    init_genesis(&mut chain).map_err(|err|format!("{}", err))?;
+    init_genesis(&mut chain).map_err(|err| format!("{}", err))?;
+    let genesis = chain.get_genesis().clone();
     info!("Genesis hash: {:?}", chain.get_genesis().hash());
 
     let tx_pool = Arc::new(RwLock::new(init_transaction_pool(&config)));
@@ -53,7 +55,7 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
         let system = System::new("bft-rs");
         let p2p_event_notify = init_p2p_event_notify();
         let discover_pid = init_p2p_service(p2p_event_notify.clone(), &config);
-        init_tcp_server(p2p_event_notify.clone(), &config);
+        init_tcp_server(p2p_event_notify.clone(), genesis.hash(), &config);
         crate::util::TimerRuntime::new(Duration::from_secs(150));
         system.run();
         sender.send(()).unwrap();
@@ -77,11 +79,11 @@ fn init_p2p_service(p2p_subscriber: Addr<ProcessSignals>, config: &Config) -> Ad
     discover_service
 }
 
-fn init_tcp_server(p2p_subscriber: Addr<ProcessSignals>, config: &Config) {
+fn init_tcp_server(p2p_subscriber: Addr<ProcessSignals>, genesis: Hash, config: &Config) {
     let peer_id = PeerId::from_str(&config.peer_id).unwrap();
     let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
-    let server = TcpServer::new(peer_id, mul_addr, None);
-
+    let author = author_handshake(genesis.clone());
+    let server = TcpServer::new(peer_id, mul_addr, None, genesis.clone(), Box::new(author));
 
     // subscriber p2p event, sync operation
     {

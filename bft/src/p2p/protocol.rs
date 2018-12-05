@@ -83,17 +83,19 @@ pub type Payload = Vec<u8>;
 pub struct Handshake {
     version: String,
     peer_id: String,
+    genesis: Hash,
 }
 
 implement_storagevalue_traits! {Handshake}
 implement_cryptohash_traits! {Handshake}
 
 impl Handshake {
-    pub fn new(version: String, peer_id: PeerId) -> Self {
+    pub fn new(version: String, peer_id: PeerId, genesis: Hash) -> Self {
         let peer_id = peer_id.to_base58();
         Handshake {
             version: version,
             peer_id: peer_id,
+            genesis: genesis,
         }
     }
 
@@ -103,5 +105,9 @@ impl Handshake {
 
     pub fn peer_id(&self) -> PeerId {
         PeerId::from_str(&self.peer_id).unwrap()
+    }
+
+    pub fn genesis(&self) -> &Hash {
+        &self.genesis
     }
 }

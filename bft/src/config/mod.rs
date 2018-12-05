@@ -24,7 +24,6 @@ pub struct Config {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct GenesisConfig {
-    pub block_hash: String,
     pub validator: Vec<String>,
     pub accounts: Table,
     pub epoch_time: Datetime,
