@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::io;
 use std::net;
 use std::str::FromStr;
-use std::time::Duration;
 use std::sync::mpsc::sync_channel;
+use std::time::Duration;
 
 use actix::prelude::*;
 use cryptocurrency_kit::storage::values::StorageValue;
@@ -36,40 +36,49 @@ impl Actor for Session {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         // send a handshake message
-        match self.bound_type {
-            BoundType::InBound => {}
-            BoundType::OutBound => {
-                let peer_id = self.local_id.clone();
-                let handshake = Handshake::new("0.1.1".to_string(), peer_id.clone());
-                info!("Packet-->, peer_id: {:?}", peer_id);
-                let raw_message = RawMessage::new(
-                    Header::new(
-                        P2PMsgCode::Handshake,
-                        10,
-                        chrono::Local::now().timestamp_nanos() as u64,
-                    ),
-                    handshake.into_bytes(),
-                );
-                ctx.add_message_stream(once(Ok(raw_message)));
-            }
+        {
+            let peer_id = self.local_id.clone();
+            let handshake = Handshake::new("0.1.1".to_string(), peer_id.clone());
+            let raw_message = RawMessage::new(
+                Header::new(
+                    P2PMsgCode::Handshake,
+                    10,
+                    chrono::Local::now().timestamp_nanos() as u64,
+                ),
+                handshake.into_bytes(),
+            );
+            ctx.add_message_stream(once(Ok(raw_message)));
         }
 
-//        ctx.run_later(Duration::from_secs(1), |act, ctx| {
-//            // pass 1s, not receive handshake packet, close the session
-//            if act.handshaked {
-//                return;
-//            }
-//            trace!("Handshake timeout, {},  local_id: {}, peer: {}", act.handshaked, act.local_id.to_base58(), act.peer_id.to_base58());
-//            act.framed.close();
-//            ctx.stop();
-//        });
+        ctx.run_later(Duration::from_secs(1), |act, ctx| {
+            // pass 1s, not receive handshake packet, close the session
+            if act.handshaked {
+                return;
+            }
+            trace!(
+                "Handshake timeout, {},  local_id: {}, peer: {}",
+                act.handshaked,
+                act.local_id.to_base58(),
+                act.peer_id.to_base58()
+            );
+            act.framed.close();
+            ctx.stop();
+        });
         trace!("P2P session created");
     }
 
-    fn stopping(&mut self, ctx: &mut Self::Context) -> Running {
-        self.server
-            .do_send(ServerEvent::Disconnected(self.peer_id.clone()));
-        trace!("P2P session stopped, local_id: {}, peer: {}", self.local_id.to_base58(), self.peer_id.to_base58());
+    fn stopping(&mut self, _: &mut Self::Context) -> Running {
+        if self.handshaked {
+            self.server
+                .do_send(ServerEvent::Disconnected(self.peer_id.clone()));
+            self.framed.close();
+        }
+        trace!(
+            "P2P session stopped, handshake:{},  local_id: {}, peer: {}",
+            self.handshaked,
+            self.local_id.to_base58(),
+            self.peer_id.to_base58()
+        );
         Running::Stop
     }
 }
@@ -82,28 +91,35 @@ impl StreamHandler<RawMessage, io::Error> for Session {
         trace!("Read message: {:?}", msg.header());
         match msg.header().code {
             P2PMsgCode::Handshake => {
-                if self.handshaked == false {
-                    self.server.send(ServerEvent::Connected(self.peer_id.clone(), self.bound_type, msg.clone()))
-                        .into_actor(self)
-                        .then(move |res, act, ctx| {
-                            match res {
-                                Ok(res) => {
-                                    if let Err(err) = res {
-                                        trace!("Author fail, err: {:?}", err);
-                                        ctx.stop();
-                                    } else {
-                                        let peer = res.unwrap();
-                                        trace!("Author successfully, before {}, local_id: {}, peer: {}", act.handshaked, act.local_id.to_base58(), act.peer_id.to_base58());
-                                        act.handshaked = true;
-                                        act.peer_id = peer;
-                                        trace!("Author successfully, after {}, local_id: {}, peer: {}", act.handshaked, act.local_id.to_base58(), act.peer_id.to_base58());
-                                    }
+                self.server
+                    .send(ServerEvent::Connected(
+                        self.peer_id.clone(),
+                        self.bound_type,
+                        msg.clone(),
+                    ))
+                    .into_actor(self)
+                    .then(|res, act, ctx| {
+                        match res {
+                            Ok(res) => {
+                                if let Err(err) = res {
+                                    trace!("Author fail, err: {:?}", err);
+                                    ctx.stop();
+                                } else {
+                                    let peer = res.unwrap();
+                                    act.handshaked = true;
+                                    act.peer_id = peer;
+                                    trace!(
+                                        "Author successfully, local_id: {}, peer: {}",
+                                        act.local_id.to_base58(),
+                                        act.peer_id.to_base58()
+                                    );
                                 }
-                                Err(err) => panic!(err)
                             }
-                            actix::fut::ok(())
-                        }).wait(ctx);
-                }
+                            Err(err) => panic!(err),
+                        }
+                        actix::fut::ok(())
+                    })
+                    .wait(ctx);
             }
             P2PMsgCode::Transaction => {}
             P2PMsgCode::Block => {}
@@ -118,23 +134,11 @@ impl StreamHandler<RawMessage, io::Error> for Session {
 impl Handler<RawMessage> for Session {
     type Result = ();
 
-    fn handle(&mut self, msg: RawMessage, ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: RawMessage, _: &mut Context<Self>) {
         trace!("Write message: {:?}", msg.header());
         self.framed.write(msg);
     }
 }
-//
-//impl Message for Result<(), P2PError> {
-//    type Result = ();
-//}
-//
-//impl Handler<Result<(), P2PError>> for Session {
-//    type Result = ();
-//
-//    fn handle(&mut self, msg: Result<(), P2PError>, ctx: &mut Context<Self>) {
-
-//    }
-//}
 
 impl Session {
     pub fn new(
