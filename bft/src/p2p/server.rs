@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use actix::prelude::*;
 use cryptocurrency_kit::storage::values::StorageValue;
+use cryptocurrency_kit::crypto::Hash;
 use futures::prelude::*;
 use libp2p::{
     core::nodes::swarm::NetworkBehaviour,
@@ -19,7 +20,7 @@ use tokio::{timer::Delay, codec::FramedRead, io::AsyncRead, io::WriteHalf, net::
 use uuid::Uuid;
 
 use super::codec::MsgPacketCodec;
-use super::protocol::{BoundType, Handshake, P2PMsgCode, RawMessage};
+use super::protocol::{BoundType, RawMessage, P2PMsgCode, Handshake};
 use super::session::Session;
 use crate::{
     common::{multiaddr_to_ipv4, random_uuid},
@@ -33,6 +34,19 @@ pub const MAX_INBOUND_CONNECTION_MAILBOX: usize = 1 << 9;
 lazy_static! {
     pub static ref ZERO_PEER: PeerId =
         { PeerId::from_str("QmX5e9hkQf7B45e2MZf38vhsC2wfA5aKQrrBuLujwaUBGw").unwrap() };
+}
+
+pub type author_fn = Fn(Handshake) -> bool;
+pub type handshake_packet_fn = Fn() -> Handshake;
+
+pub fn author_handshake(genesis: Hash) -> impl Fn(Handshake) -> bool {
+    let author = move |handshake: Handshake| {
+        if *handshake.genesis() != genesis {
+            return false;
+        }
+        true
+    };
+    author
 }
 
 pub enum ServerEvent {
@@ -51,6 +65,8 @@ pub struct TcpServer {
     key: Option<secio::SecioKeyPair>,
     node_info: (PeerId, Multiaddr),
     peers: HashMap<PeerId, ConnectInfo>,
+    genesis: Hash,
+    author_fn: Box<author_fn>,
 }
 
 struct ConnectInfo {
@@ -137,7 +153,7 @@ impl Handler<ServerEvent> for TcpServer {
                 self.peers.remove(&peer_id);
             }
             ServerEvent::Message(ref raw_msg) => {
-                //                self.handle_network_message(raw_msg.clone())?;
+//                self.handle_network_message(raw_msg.clone())?;
             }
         }
         Err(P2PError::InvalidMessage)
@@ -149,6 +165,8 @@ impl TcpServer {
         peer_id: PeerId,
         mul_addr: Multiaddr,
         key: Option<secio::SecioKeyPair>,
+        genesis: Hash,
+        author: Box<Fn(Handshake) -> bool>,
     ) -> Addr<TcpServer> {
         let mut addr: String = String::new();
         mul_addr.iter().for_each(|item| match &item {
@@ -162,9 +180,9 @@ impl TcpServer {
         });
         let socket_addr = net::SocketAddr::from_str(&addr).unwrap();
 
-        // bind tcp listen address
+// bind tcp listen address
         let lis = TcpListener::bind(&socket_addr).unwrap();
-        // create tcp server and dispatch coming connection to self handle
+// create tcp server and dispatch coming connection to self handle
         TcpServer::create(move |ctx| {
             ctx.set_mailbox_capacity(MAX_INBOUND_CONNECTION_MAILBOX);
             ctx.add_message_stream(lis.incoming().map_err(|_| ()).map(move |s| {
@@ -176,6 +194,8 @@ impl TcpServer {
                 key: key,
                 node_info: (peer_id.clone(), mul_addr.clone()),
                 peers: HashMap::new(),
+                genesis: genesis,
+                author_fn: author,
             }
         })
     }
@@ -188,14 +208,16 @@ impl TcpServer {
         let mul_addr = remote_addresses[0].clone();
         let local_id = self.node_info.0.clone();
         let server_id = self.pid.clone();
+        let genesis = self.genesis.clone();
         let delay = rand::random::<u64>() % 100;
         let timer_fut = Delay::new(Instant::now() + Duration::from_millis(delay));
-        tokio::spawn(timer_fut.and_then(|_| {
-            // try to connect, dial it
+        tokio::spawn(timer_fut.and_then(move |_| {
+        // try to connect, dial it
             TcpDial::new(
                 remote_id,
                 local_id,
                 mul_addr,
+                genesis,
                 server_id,
             );
             futures::future::ok(())
@@ -232,6 +254,10 @@ impl TcpServer {
             return Err(P2PError::HandShakeFailed);
         }
 
+        if !(self.author_fn)(handshake.clone()) {
+            return Err(P2PError::DifferentGenesis);
+        }
+
         match bound_type {
             BoundType::InBound => {}
             BoundType::OutBound => {}
@@ -251,7 +277,7 @@ impl Handler<TcpConnectOutBound> for TcpServer {
 
     fn handle(&mut self, msg: TcpConnectOutBound, ctx: &mut Context<Self>) {
         trace!("TcpServer receive tcp connect event, peerid: {:?}", msg.1);
-        // For each incoming connection we create `session` actor with out chat server
+// For each incoming connection we create `session` actor with out chat server
         if self.peers.contains_key(&msg.1) {
             msg.0.shutdown(net::Shutdown::Both).unwrap();
             return;
@@ -260,7 +286,8 @@ impl Handler<TcpConnectOutBound> for TcpServer {
         let peer_id = msg.1.clone();
         let server_id = self.pid.clone();
         let local_id = self.node_info.0.clone();
-        Session::create(|ctx| {
+        let genesis = self.genesis.clone();
+        Session::create(move |ctx| {
             let (r, w) = msg.0.split();
             Session::add_stream(FramedRead::new(r, MsgPacketCodec), ctx);
             Session::new(
@@ -270,6 +297,7 @@ impl Handler<TcpConnectOutBound> for TcpServer {
                 server_id,
                 actix::io::FramedWrite::new(w, MsgPacketCodec, ctx),
                 BoundType::OutBound,
+                genesis,
             )
         });
     }
@@ -284,7 +312,8 @@ impl Handler<TcpConnectInBound> for TcpServer {
     fn handle(&mut self, msg: TcpConnectInBound, _: &mut Context<Self>) {
         let server_id = self.pid.clone();
         let local_id = self.node_info.0.clone();
-        Session::create(|ctx| {
+        let genesis = self.genesis.clone();
+        Session::create(move |ctx| {
             let (r, w) = msg.0.split();
             Session::add_stream(FramedRead::new(r, MsgPacketCodec), ctx);
             Session::new(
@@ -294,6 +323,7 @@ impl Handler<TcpConnectInBound> for TcpServer {
                 server_id,
                 actix::io::FramedWrite::new(w, MsgPacketCodec, ctx),
                 BoundType::InBound,
+                genesis,
             )
         });
     }
@@ -312,6 +342,7 @@ impl TcpDial {
         peer_id: PeerId,
         local_id: PeerId,
         mul_addr: Multiaddr,
+        genesis: Hash,
         tcp_server: Addr<TcpServer>,
     ) {
         let socket_addr = multiaddr_to_ipv4(&mul_addr).unwrap();
@@ -326,8 +357,9 @@ impl TcpDial {
                     trace!("Dialing remote peer: {:?}", peer_id);
                     let peer_id = peer_id.clone();
                     let local_id = local_id.clone();
+                    let genesis = genesis.clone();
                     let tcp_server = tcp_server.clone();
-                    Session::create(|ctx| {
+                    Session::create(move |ctx| {
                         let (r, w) = stream.split();
                         Session::add_stream(FramedRead::new(r, MsgPacketCodec), ctx);
                         Session::new(
@@ -337,6 +369,7 @@ impl TcpDial {
                             tcp_server,
                             actix::io::FramedWrite::new(w, MsgPacketCodec, ctx),
                             BoundType::OutBound,
+                            genesis,
                         )
                     });
 

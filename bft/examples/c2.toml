@@ -7,7 +7,6 @@ ttl = 3000
 store = "/tmp/block/c2"
 
 [genesis]
-block_hash = "dddddd"
 validator = ["0x5701fbd05e77cac003a6894e4b2a3c12287ed313", "0x6510f8d84c0b8b3091fc3abe2fdff6036c90865d", "0x3140bda54df92f9453b487afdb3bcce02d154c74", "0x7035dafbeac1792ab5b7ed5c903ac63522eb534a","0x6730933a2cb6f26af786d7f5979efbdf29049c3a"]
 epoch_time = 2018-09-09T09:09:09.09-09:09
 proposer = "0x5701fbd05e77cac003a6894e4b2a3c12287ed313"

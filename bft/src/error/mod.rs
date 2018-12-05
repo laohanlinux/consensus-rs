@@ -1,5 +1,7 @@
 use failure::Error;
 
+use cryptocurrency_kit::crypto::Hash;
+
 #[derive(Debug, Fail)]
 pub enum TxPoolError {
     #[fail(display = "More than max txpool limit, max:{}", _0)]
@@ -10,6 +12,8 @@ pub enum TxPoolError {
 pub enum P2PError {
     #[fail(display = "Handshake fail")]
     HandShakeFailed,
+    #[fail(display = "different genesis")]
+    DifferentGenesis,
     #[fail(display = "Dump connected")]
     DumpConnected,
     #[fail(display = "Invalid Message type")]
