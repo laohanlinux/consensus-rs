@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use actix::prelude::*;
+use actix_broker::{BrokerSubscribe, BrokerIssue};
 use parking_lot::RwLock;
 use crossbeam::{Sender, Receiver, channel::bounded};
 use rand::random;
@@ -11,9 +12,9 @@ use cryptocurrency_kit::crypto::CryptoHash;
 use cryptocurrency_kit::crypto::hash;
 
 use crate::{
+    subscriber::events::ChainEvent,
     core::chain::Chain,
     core::tx_pool::TxPool,
-    core::events::*,
     consensus::backend::Backend,
     consensus::consensus::Engine,
     types::Timestamp,
@@ -27,7 +28,6 @@ pub struct Minner {
     chain: Arc<Chain>,
     txpool: Box<TxPool>,
     engine: Box<Engine>,
-    //    chain_event: Addr<ProcessSignals>,
     seal_tx: Sender<()>,
     seal_rx: Receiver<()>,
 }
@@ -36,6 +36,7 @@ impl Actor for Minner {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        self.subscribe_async::<ChainEvent>(ctx);
         info!("Start minner actor");
     }
 
@@ -43,6 +44,7 @@ impl Actor for Minner {
         info!("Minner actor has stoppped");
     }
 }
+
 
 impl Handler<ChainEvent> for Minner {
     type Result = ();

@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use actix::Addr;
+use actix::prelude::*;
 use parking_lot::RwLock;
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::crypto::Hash;
+use futures::Future;
 
 use crate::{
     config::Config,
     error::{ChainError, ChainResult},
     types::{Height, Validators, ValidatorArray, Validator, block::Block},
+    subscriber::events::{ChainEvent, ChainEventSubscriber},
 };
 use super::genesis::store_genesis_block;
 use super::ledger::Ledger;
@@ -16,21 +18,41 @@ use super::ledger::Ledger;
 pub struct Chain {
     ledger: Arc<RwLock<Ledger>>,
     //    subscriber: Addr<ProcessSignals>,
+    subscriber: Addr<ChainEventSubscriber>,
     genesis: Option<Block>,
     pub config: Config,
 }
 
 impl Chain {
-    pub fn new(config: Config, ledger: Arc<RwLock<Ledger>>) -> Self {
+    pub fn new(config: Config, subscriber: Addr<ChainEventSubscriber>, ledger: Arc<RwLock<Ledger>>) -> Self {
         Chain {
             ledger,
-//            subscriber: subscriber,
+            subscriber: subscriber,
             config,
             genesis: None,
         }
     }
 
-    pub fn insert_block() {}
+    pub fn insert_block(&self, block: &Block) -> ChainResult {
+        {
+            let mut ledger = self.ledger.write();
+            if ledger.get_block_by_height(block.height()).is_some() {
+                trace!("{:?} has exists", block.hash());
+                return Err(ChainError::Exists(block.hash()));
+            }
+            ledger.add_block(block);
+        }
+        let req1 = self.subscriber.send(ChainEvent::NewBlock(block.clone()));
+        let req2 = self.subscriber.send(ChainEvent::NewHeader(block.header().clone()));
+        Arbiter::spawn(req1.and_then(|res| {
+            futures::future::ok(())
+        }).map_err(|err| panic!(err)));
+        Arbiter::spawn(req2.and_then(|res| {
+            futures::future::ok(())
+        }).map_err(|err| panic!(err)));
+
+        Ok(())
+    }
 
     pub fn get_ledger(&self) -> &Arc<RwLock<Ledger>> {
         &self.ledger

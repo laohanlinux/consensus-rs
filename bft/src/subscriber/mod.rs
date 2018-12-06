@@ -4,6 +4,7 @@ use libp2p::Multiaddr;
 use libp2p::PeerId;
 
 pub mod async_subscriber;
+pub mod events;
 
 #[macro_use]
 use super::*;

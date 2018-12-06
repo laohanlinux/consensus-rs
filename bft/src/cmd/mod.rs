@@ -14,6 +14,7 @@ use futures::Future;
 use lru_time_cache::LruCache;
 use kvdb_rocksdb::Database;
 use cryptocurrency_kit::crypto::Hash;
+use cryptocurrency_kit::ethkey::{KeyPair, Generator, Random};
 
 use crate::{
     logger::init_log,
@@ -27,13 +28,14 @@ use crate::{
     core::tx_pool::{BaseTxPool, TxPool},
     subscriber::*,
     common,
+    consensus::consensus::{Engine, create_consensus_engine},
     core::ledger::{Ledger, LastMeta},
     core::chain::Chain,
     error::ChainResult,
     store::schema::Schema,
     pprof::spawn_signal_handler,
     types::Validator,
-    core::events::ChainEvent,
+    subscriber::events::{ChainEvent, SubscriberType, ChainEventSubscriber},
 };
 
 pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
@@ -44,17 +46,21 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
         return Err(result.err().unwrap());
     }
     let config = result.unwrap();
-    println!("{:?}", config);
-    let ledger = Arc::new(RwLock::new(init_store(&config)?));
+    println!("--> {:?}", config);
+    let ledger = init_store(&config)?;
+    let ledger: Arc<RwLock<Ledger>> = Arc::new(RwLock::new(ledger));
     // init subscriber
-
-    let mut chain = Chain::new(config.clone(), ledger);
+    println!("----------");
+    let sub = ChainEventSubscriber::new(SubscriberType::Async).start();
+    println!("---|||-------");
+    let mut chain = Chain::new(config.clone(), sub.clone(), ledger);
     init_genesis(&mut chain).map_err(|err| format!("{}", err))?;
     let genesis = chain.get_genesis().clone();
     info!("Genesis hash: {:?}", chain.get_genesis().hash());
-
-
     let tx_pool = Arc::new(RwLock::new(init_transaction_pool(&config)));
+
+    let chain = Arc::new(chain);
+    start_consensus_engine(&config, Random.generate().unwrap(), chain.clone());
 
     let _: JoinHandle<Result<(), String>> = spawn(move || {
         let system = System::new("bft-rs");
@@ -143,8 +149,9 @@ fn init_genesis(chain: &mut Chain) -> ChainResult {
     chain.store_genesis_block()
 }
 
-fn start_consensus_engine(config: &Config, chain: Arc<Chain>) {
-    use crate::consensus::backend;
+fn start_consensus_engine(config: &Config, key_pair: KeyPair, chain: Arc<Chain>) -> Box<Engine> {
+    info!("Init consensus engine");
+    create_consensus_engine(key_pair, chain)
 }
 
 fn init_signal_handle() {

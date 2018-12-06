@@ -37,6 +37,7 @@ extern crate priority_queue;
 extern crate evmap;
 #[macro_use]
 extern crate actix;
+extern crate actix_broker;
 #[macro_use]
 extern crate crossbeam;
 #[macro_use]

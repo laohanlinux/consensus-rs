@@ -23,7 +23,9 @@ pub enum P2PError {
 pub type ChainResult = Result<(), ChainError>;
 
 #[derive(Debug, Fail)]
-pub enum ChainError{
+pub enum ChainError {
+    #[fail(display = "the block has exist, ({:?})", _0)]
+    Exists(Hash),
     #[fail(display = "An unknown error has occurred, ({})", _0)]
     Unknown(String),
 }
