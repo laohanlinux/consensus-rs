@@ -29,6 +29,7 @@ use super::{
 };
 use crate::{
     core::chain::Chain,
+    consensus::validator::fn_selector,
     consensus::backend::Backend,
     consensus::config::Config,
     consensus::error::{ConsensusError, ConsensusResult},
@@ -65,7 +66,7 @@ impl Actor for Core {
     type Context = Context<Self>;
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("core actor has started");
-        self.pid = ctx.address();
+        self.start_new_zero_round();
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
@@ -132,9 +133,12 @@ impl Handler<OpCMD> for Core {
 }
 
 impl Core {
-    fn new(chain: Arc<Chain>, backend: Box<Backend<ValidatorsType=ImplValidatorSet>>, key_pair: KeyPair, validators: ImplValidatorSet) -> Addr<Core> {
+    pub fn new(chain: Arc<Chain>, backend: Box<Backend<ValidatorsType=ImplValidatorSet>>, key_pair: KeyPair) -> Addr<Core> {
         let address = key_pair.address();
         let last_block = chain.get_last_block();
+        let validators = chain.get_validators(last_block.height());
+        let addresses: Vec<Address> = validators.iter().map(|validator| *validator.address()).collect();
+        let validators = ImplValidatorSet::new(&addresses, Box::new(fn_selector));
 
         let last_view = View::new(last_block.height(), 0);
         let lock_hash = last_block.hash();

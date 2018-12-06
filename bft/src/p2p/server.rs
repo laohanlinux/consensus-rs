@@ -179,9 +179,9 @@ impl TcpServer {
         });
         let socket_addr = net::SocketAddr::from_str(&addr).unwrap();
 
-// bind tcp listen address
+        // bind tcp listen address
         let lis = TcpListener::bind(&socket_addr).unwrap();
-// create tcp server and dispatch coming connection to self handle
+        // create tcp server and dispatch coming connection to self handle
         TcpServer::create(move |ctx| {
             ctx.set_mailbox_capacity(MAX_INBOUND_CONNECTION_MAILBOX);
             ctx.add_message_stream(lis.incoming().map_err(|_| ()).map(move |s| {
@@ -276,7 +276,7 @@ impl Handler<TcpConnectOutBound> for TcpServer {
 
     fn handle(&mut self, msg: TcpConnectOutBound, ctx: &mut Context<Self>) {
         trace!("TcpServer receive tcp connect event, peerid: {:?}", msg.1);
-// For each incoming connection we create `session` actor with out chat server
+        // For each incoming connection we create `session` actor with out chat server
         if self.peers.contains_key(&msg.1) {
             msg.0.shutdown(net::Shutdown::Both).unwrap();
             return;

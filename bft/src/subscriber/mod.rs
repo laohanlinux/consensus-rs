@@ -7,6 +7,7 @@ pub mod async_subscriber;
 
 #[macro_use]
 use super::*;
+use types::block::{Block, Header};
 
 #[derive(Message, Clone, Debug)]
 pub enum P2PEvent {

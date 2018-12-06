@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use actix::Addr;
 use parking_lot::RwLock;
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::crypto::Hash;
@@ -14,6 +15,7 @@ use super::ledger::Ledger;
 
 pub struct Chain {
     ledger: Arc<RwLock<Ledger>>,
+    //    subscriber: Addr<ProcessSignals>,
     genesis: Option<Block>,
     pub config: Config,
 }
@@ -22,6 +24,7 @@ impl Chain {
     pub fn new(config: Config, ledger: Arc<RwLock<Ledger>>) -> Self {
         Chain {
             ledger,
+//            subscriber: subscriber,
             config,
             genesis: None,
         }

@@ -62,7 +62,7 @@ pub trait Backend {
     fn get_header_by_height(&self, height: Height) -> Option<Header>;
 }
 
-pub fn new_backend(keypair: KeyPair, chain: Arc<Chain>) -> Box<Backend<ValidatorsType=ImplValidatorSet>> {
+pub fn new_impl_backend(keypair: KeyPair, chain: Arc<Chain>) -> ImplBackend {
     let request_time = chain.config.request_time.as_millis();
     let block_period = chain.config.block_period.as_millis();
     let config = Config {
@@ -81,7 +81,7 @@ pub fn new_backend(keypair: KeyPair, chain: Arc<Chain>) -> Box<Backend<Validator
     let proposed_block_hash = EMPTY_HASH;
     let (tx, rx) = crossbeam_channel::bounded(1);
 
-    Box::new(ImplBackend {
+    ImplBackend {
         core_pid: None,
         started: false,
         validaor: Validator::new(keypair.address()),
@@ -94,10 +94,11 @@ pub fn new_backend(keypair: KeyPair, chain: Arc<Chain>) -> Box<Backend<Validator
         commit_rx: rx,
         ledger: chain.get_ledger().clone(),
         config: config,
-    })
+    }
 }
 
-struct ImplBackend {
+#[derive(Clone)]
+pub struct ImplBackend {
     core_pid: Option<Addr<Core>>,
     validaor: Validator,
     validator_set: ImplValidatorSet,
@@ -138,7 +139,7 @@ impl Backend for ImplBackend {
 
     /// TODO
     fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String> {
-// write seal into block
+        // write seal into block
         proposal.set_seal(seals.clone());
         let block = proposal.block();
         if self.proposed_block_hash == block.hash() {
@@ -156,8 +157,8 @@ impl Backend for ImplBackend {
             block.height(),
             block.coinbase()
         );
-// TODO add block broadcast
-        Err("".to_string())
+        // TODO add block broadcast
+        Err("".to_owned())
     }
 
     /// TODO
@@ -169,7 +170,7 @@ impl Backend for ImplBackend {
             return (Duration::from_nanos(0), Err(EngineError::InvalidProposal));
         }
 
-// check transaction
+        // check transaction
         {
             let transactions = block.transactions().to_vec();
             for transaction in &transactions {
@@ -256,6 +257,10 @@ impl Backend for ImplBackend {
 
 impl Engine for ImplBackend {
     fn start(&mut self) -> Result<(), String> {
+        if self.started {
+            panic!("Engine start only once");
+        }
+        self.started = true;
         Ok(())
     }
 
@@ -293,7 +298,7 @@ impl Engine for ImplBackend {
             return Err(EngineError::InvalidTimestamp);
         }
 
-// check votes
+        // check votes
         {
             let votes = header.votes.as_ref().ok_or(EngineError::LackVotes(
                 self.validator_set.two_thirds_majority() + 1,
@@ -311,7 +316,7 @@ impl Engine for ImplBackend {
             }
         }
 
-// FIXME add more check
+        // FIXME add more check
         Ok(())
     }
 
@@ -393,8 +398,8 @@ impl Engine for ImplBackend {
         // TODO add sign
         let delay = {
             let now = chrono::Local::now().timestamp() as u64;
-            if now > header.time {
-                now - header.time
+            if now < header.time {
+                header.time - now
             } else {
                 0
             }

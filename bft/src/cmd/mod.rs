@@ -33,6 +33,7 @@ use crate::{
     store::schema::Schema,
     pprof::spawn_signal_handler,
     types::Validator,
+    core::events::ChainEvent,
 };
 
 pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
@@ -45,10 +46,13 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
     let config = result.unwrap();
     println!("{:?}", config);
     let ledger = Arc::new(RwLock::new(init_store(&config)?));
+    // init subscriber
+
     let mut chain = Chain::new(config.clone(), ledger);
     init_genesis(&mut chain).map_err(|err| format!("{}", err))?;
     let genesis = chain.get_genesis().clone();
     info!("Genesis hash: {:?}", chain.get_genesis().hash());
+
 
     let tx_pool = Arc::new(RwLock::new(init_transaction_pool(&config)));
 

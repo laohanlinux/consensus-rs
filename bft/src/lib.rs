@@ -66,6 +66,7 @@ pub mod error;
 pub mod pprof;
 #[macro_use]
 pub mod subscriber;
+pub mod minner;
 pub mod cmd;
 pub mod config;
 pub mod logger;
