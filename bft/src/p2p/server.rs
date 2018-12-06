@@ -5,8 +5,9 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use actix::prelude::*;
+use actix_broker::BrokerSubscribe;
 use cryptocurrency_kit::storage::values::StorageValue;
-use cryptocurrency_kit::crypto::Hash;
+use cryptocurrency_kit::crypto::{CryptoHash, Hash};
 use futures::prelude::*;
 use libp2p::{
     core::nodes::swarm::NetworkBehaviour,
@@ -18,14 +19,16 @@ use libp2p::{
 };
 use tokio::{timer::Delay, codec::FramedRead, io::AsyncRead, io::WriteHalf, net::TcpListener, net::TcpStream};
 use uuid::Uuid;
+use lru_time_cache::LruCache;
 
 use super::codec::MsgPacketCodec;
-use super::protocol::{BoundType, RawMessage, P2PMsgCode, Handshake};
+use super::protocol::{BoundType, RawMessage, Header as RawHeader, P2PMsgCode, Handshake};
 use super::session::Session;
 use crate::{
     common::{multiaddr_to_ipv4, random_uuid},
     error::P2PError,
     subscriber::P2PEvent,
+    subscriber::events::BroadcastEvent,
 };
 
 pub const MAX_OUTBOUND_CONNECTION_MAILBOX: usize = 1 << 10;
@@ -49,7 +52,7 @@ pub fn author_handshake(genesis: Hash) -> impl Fn(Handshake) -> bool {
 }
 
 pub enum ServerEvent {
-    Connected(PeerId, BoundType, RawMessage),
+    Connected(PeerId, BoundType, Addr<Session>, RawMessage),
     // handshake
     Disconnected(PeerId),
     Message(RawMessage),
@@ -65,19 +68,22 @@ pub struct TcpServer {
     node_info: (PeerId, Multiaddr),
     peers: HashMap<PeerId, ConnectInfo>,
     genesis: Hash,
+    cache: LruCache<Hash, bool>,
     author_fn: Box<author_fn>,
 }
 
 struct ConnectInfo {
     connect_time: chrono::DateTime<chrono::Utc>,
     bound_type: BoundType,
+    pid: Addr<Session>,
 }
 
 impl ConnectInfo {
-    fn new(connect_time: chrono::DateTime<chrono::Utc>, bound_type: BoundType) -> Self {
+    fn new(connect_time: chrono::DateTime<chrono::Utc>, bound_type: BoundType, pid: Addr<Session>) -> Self {
         ConnectInfo {
             connect_time: connect_time,
             bound_type: bound_type,
+            pid: pid,
         }
     }
 }
@@ -103,6 +109,7 @@ impl Actor for TcpServer {
             "[{:?}] Server start, listen on: {:?}",
             self.node_info.0, self.node_info.1
         );
+        self.subscribe_async::<BroadcastEvent>(ctx);
         ctx.run_interval(::std::time::Duration::from_secs(2), |act, _| {
             info!(
                 "Connect clients: {}\nlocal-id:{}, \n{}",
@@ -139,20 +146,42 @@ impl Handler<P2PEvent> for TcpServer {
     }
 }
 
+impl Handler<BroadcastEvent> for TcpServer {
+    type Result = ();
+
+    /// handle p2p event
+    fn handle(&mut self, msg: BroadcastEvent, ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            BroadcastEvent::Consensus(msg) => {
+                let header = RawHeader::new(P2PMsgCode::Consensus, 10, chrono::Local::now().timestamp_millis() as u64);
+                let payload = msg.into_payload();
+                let msg = RawMessage::new(header, payload);
+                self.broadcast(&msg);
+            }
+            _ => unimplemented!()
+        }
+        ()
+    }
+}
+
 impl Handler<ServerEvent> for TcpServer {
     type Result = Result<PeerId, P2PError>;
     fn handle(&mut self, msg: ServerEvent, ctx: &mut Self::Context) -> Self::Result {
         match msg {
-            ServerEvent::Connected(ref peer_id, ref bound_type, ref raw_msg) => {
+            ServerEvent::Connected(ref peer_id, ref bound_type, ref pid, ref raw_msg) => {
                 trace!("Connected peer: {:?}", peer_id);
-                return self.handle_handshake(bound_type.clone(), raw_msg.payload());
+                return self.handle_handshake(bound_type.clone(), pid.clone(), raw_msg.payload());
             }
             ServerEvent::Disconnected(ref peer_id) => {
                 trace!("Disconnected peer: {:?}", peer_id);
                 self.peers.remove(&peer_id);
             }
+
+            // 接收端
             ServerEvent::Message(ref raw_msg) => {
-//                self.handle_network_message(raw_msg.clone())?;
+                let hash: Hash = raw_msg.hash();
+                self.cache.entry(hash).or_insert(true);
+                // TODO
             }
         }
         Err(P2PError::InvalidMessage)
@@ -179,9 +208,9 @@ impl TcpServer {
         });
         let socket_addr = net::SocketAddr::from_str(&addr).unwrap();
 
-// bind tcp listen address
+        // bind tcp listen address
         let lis = TcpListener::bind(&socket_addr).unwrap();
-// create tcp server and dispatch coming connection to self handle
+        // create tcp server and dispatch coming connection to self handle
         TcpServer::create(move |ctx| {
             ctx.set_mailbox_capacity(MAX_INBOUND_CONNECTION_MAILBOX);
             ctx.add_message_stream(lis.incoming().map_err(|_| ()).map(move |s| {
@@ -193,6 +222,7 @@ impl TcpServer {
                 key: key,
                 node_info: (peer_id.clone(), mul_addr.clone()),
                 peers: HashMap::new(),
+                cache: LruCache::with_expiry_duration_and_capacity(Duration::from_secs(5), 100_000),
                 genesis: genesis,
                 author_fn: author,
             }
@@ -241,6 +271,7 @@ impl TcpServer {
     fn handle_handshake(
         &mut self,
         bound_type: BoundType,
+        pid: Addr<Session>,
         payload: &Vec<u8>,
     ) -> Result<PeerId, P2PError> {
         use std::borrow::Cow;
@@ -261,9 +292,15 @@ impl TcpServer {
             BoundType::InBound => {}
             BoundType::OutBound => {}
         }
-        let connect_info = ConnectInfo::new(chrono::Utc::now(), BoundType::InBound);
+        let connect_info = ConnectInfo::new(chrono::Utc::now(), BoundType::InBound, pid);
         self.peers.entry(peer_id.clone()).or_insert(connect_info);
         Ok(peer_id)
+    }
+
+    fn broadcast(&self, msg: &RawMessage) {
+        for (_, info) in &self.peers {
+            info.pid.do_send(msg.clone());
+        }
     }
 }
 
@@ -276,7 +313,7 @@ impl Handler<TcpConnectOutBound> for TcpServer {
 
     fn handle(&mut self, msg: TcpConnectOutBound, ctx: &mut Context<Self>) {
         trace!("TcpServer receive tcp connect event, peerid: {:?}", msg.1);
-// For each incoming connection we create `session` actor with out chat server
+        // For each incoming connection we create `session` actor with out chat server
         if self.peers.contains_key(&msg.1) {
             msg.0.shutdown(net::Shutdown::Both).unwrap();
             return;

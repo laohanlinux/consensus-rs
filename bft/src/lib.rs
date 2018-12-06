@@ -37,6 +37,7 @@ extern crate priority_queue;
 extern crate evmap;
 #[macro_use]
 extern crate actix;
+extern crate actix_broker;
 #[macro_use]
 extern crate crossbeam;
 #[macro_use]
@@ -66,6 +67,7 @@ pub mod error;
 pub mod pprof;
 #[macro_use]
 pub mod subscriber;
+pub mod minner;
 pub mod cmd;
 pub mod config;
 pub mod logger;

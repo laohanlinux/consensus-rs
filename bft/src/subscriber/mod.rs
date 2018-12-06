@@ -4,9 +4,11 @@ use libp2p::Multiaddr;
 use libp2p::PeerId;
 
 pub mod async_subscriber;
+pub mod events;
 
 #[macro_use]
 use super::*;
+use types::block::{Block, Header};
 
 #[derive(Message, Clone, Debug)]
 pub enum P2PEvent {

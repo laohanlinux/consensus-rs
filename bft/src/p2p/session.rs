@@ -97,6 +97,7 @@ impl StreamHandler<RawMessage, io::Error> for Session {
                     .send(ServerEvent::Connected(
                         self.peer_id.clone(),
                         self.bound_type,
+                        self.pid.as_ref().unwrap().clone(),
                         msg.clone(),
                     ))
                     .into_actor(self)

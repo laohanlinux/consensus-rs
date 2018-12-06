@@ -9,6 +9,7 @@ use crate::common::random_dir;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
+    pub chain_id: u64,
     pub ip: String,
     pub port: u16,
     #[serde(with = "serde_millis")]
@@ -35,6 +36,7 @@ pub struct GenesisConfig {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            chain_id: 98,
             ip: "127.0.0.1".to_string(),
             port: 7960,
             block_period: Duration::from_millis(3 * 1000),

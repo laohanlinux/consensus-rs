@@ -75,6 +75,10 @@ impl Header {
         }
     }
 
+    pub fn new_mock(pre_hash: Hash, proposer: Address, tx_hash: Hash, height: Height, tm: Timestamp, extra: Option<Vec<u8>>) -> Self {
+        Self::new(pre_hash, proposer, EMPTY_HASH, tx_hash, EMPTY_HASH, 0, 0, height, 0, 0, tm, None, extra)
+    }
+
     pub fn zero_header() -> Header {
         Header {
             prev_hash: Hash::zero(),
