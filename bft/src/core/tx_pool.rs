@@ -81,7 +81,7 @@ impl TxPool for BaseTxPool {
 
 impl BaseTxPool {
     pub fn new() -> Self {
-        let n = (MAX_TXPOOL_SIZE / MAX_SLOT_SIZE as u64) as usize;
+        let n = (MAX_TXPOOL_SIZE / u64::from(MAX_SLOT_SIZE)) as usize;
         let mut tx_pool = BaseTxPool {
             pq: PriorityQueue::new(),
             txs: Vec::with_capacity(n),

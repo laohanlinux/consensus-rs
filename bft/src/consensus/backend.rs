@@ -1,10 +1,13 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
+use actix::prelude::*;
+use futures::Future;
+use parking_lot::RwLock;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use chrono::Local;
 use chrono_humanize::HumanTime;
-use crossbeam::crossbeam_channel::Sender;
+use crossbeam::crossbeam_channel::{self, Sender, Receiver};
 use cryptocurrency_kit::common::to_keccak;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH, HASH_SIZE};
 use cryptocurrency_kit::ethkey::keccak::Keccak256;
@@ -14,14 +17,17 @@ use cryptocurrency_kit::ethkey::{
 use lru_time_cache::LruCache;
 
 use super::{
+    core::core::Core,
+    events::{NewHeaderEvent, FinalCommittedEvent, OpCMD},
     config::Config,
     consensus::Engine,
     error::{EngineError, EngineResult},
     types::Proposal,
-    validator::{ImplValidatorSet, ValidatorSet},
+    validator::{ImplValidatorSet, ValidatorSet, fn_selector},
 };
 use crate::{
     core::ledger::Ledger,
+    core::chain::Chain,
     common::merkle_tree_root,
     types::block::{Block, Header},
     types::{Height, Validator, EMPTY_ADDRESS},
@@ -56,7 +62,43 @@ pub trait Backend {
     fn get_header_by_height(&self, height: Height) -> Option<Header>;
 }
 
+pub fn new_backend(keypair: KeyPair, chain: Arc<Chain>) -> Box<Backend<ValidatorsType=ImplValidatorSet>> {
+    let request_time = chain.config.request_time.as_millis();
+    let block_period = chain.config.block_period.as_millis();
+    let config = Config {
+        request_time: request_time as u64,
+        block_period: block_period as u64,
+        chain_id: 0,
+    };
+
+    let addresses: Vec<Address> = chain.get_validators(chain.get_last_height())
+        .iter()
+        .map(|validator| *validator.address())
+        .collect();
+    let validator_set = ImplValidatorSet::new(&addresses, Box::new(fn_selector));
+    let inbound_cache = LruCache::with_capacity(1 << 10);
+    let outbound_cache = LruCache::with_capacity(1 << 10);
+    let proposed_block_hash = EMPTY_HASH;
+    let (tx, rx) = crossbeam_channel::bounded(1);
+
+    Box::new(ImplBackend {
+        core_pid: None,
+        started: false,
+        validaor: Validator::new(keypair.address()),
+        validator_set: validator_set,
+        key_pair: keypair,
+        inbound_cache: inbound_cache,
+        outbound_cache: outbound_cache,
+        proposed_block_hash: proposed_block_hash,
+        commit_tx: tx,
+        commit_rx: rx,
+        ledger: chain.get_ledger().clone(),
+        config: config,
+    })
+}
+
 struct ImplBackend {
+    core_pid: Option<Addr<Core>>,
     validaor: Validator,
     validator_set: ImplValidatorSet,
     key_pair: KeyPair,
@@ -64,8 +106,10 @@ struct ImplBackend {
     outbound_cache: LruCache<Hash, String>,
     proposed_block_hash: Hash,
     // proposal hash it from local node
-    commit_channel: Sender<Block>,
+    commit_tx: Sender<Block>,
+    commit_rx: Receiver<Block>,
     ledger: Arc<RwLock<Ledger>>,
+    started: bool,
     config: Config,
 }
 
@@ -94,17 +138,17 @@ impl Backend for ImplBackend {
 
     /// TODO
     fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String> {
-        // write seal into block
+// write seal into block
         proposal.set_seal(seals.clone());
         let block = proposal.block();
         if self.proposed_block_hash == block.hash() {
             let block = block.clone();
-            self.commit_channel.send(block).unwrap();
+            self.commit_tx.send(block).unwrap();
         }
         let mut block = proposal.block().clone();
         let mut votes = block.mut_votes();
         votes.unwrap().add_votes(&seals);
-        let mut ledger = self.ledger.write().unwrap();
+        let mut ledger = self.ledger.write();
         ledger.add_block(&block);
         info!(
             "committed a new block, hash:{}, height:{}, proposer:{}",
@@ -112,7 +156,7 @@ impl Backend for ImplBackend {
             block.height(),
             block.coinbase()
         );
-        // TODO add block broadcast
+// TODO add block broadcast
         Err("".to_string())
     }
 
@@ -125,7 +169,7 @@ impl Backend for ImplBackend {
             return (Duration::from_nanos(0), Err(EngineError::InvalidProposal));
         }
 
-        // check transaction
+// check transaction
         {
             let transactions = block.transactions().to_vec();
             for transaction in &transactions {
@@ -175,20 +219,20 @@ impl Backend for ImplBackend {
     }
 
     fn last_proposal(&self) -> Result<Proposal, ()> {
-        let ledger = self.ledger.read().unwrap();
+        let ledger = self.ledger.read();
         let block = ledger.get_last_block();
         Ok(Proposal::new(block.clone()))
     }
 
     fn has_proposal(&self, hash: &Hash, height: Height) -> bool {
-        let ledger = self.ledger.read().unwrap();
+        let ledger = self.ledger.read();
         let block_hash = ledger.get_block_hash_by_height(height);
         block_hash.map_or(EMPTY_HASH, |v| v) == *hash
     }
 
     fn get_proposer(&self, height: Height) -> Address {
         let header = {
-            let ledger = self.ledger.read().unwrap();
+            let ledger = self.ledger.read();
             ledger.get_header_by_height(height)
         };
         header.map_or(*EMPTY_ADDRESS, |header| header.proposer)
@@ -205,7 +249,7 @@ impl Backend for ImplBackend {
     }
 
     fn get_header_by_height(&self, height: Height) -> Option<Header> {
-        let ledger = self.ledger.read().unwrap();
+        let ledger = self.ledger.read();
         ledger.get_header_by_height(height)
     }
 }
@@ -216,6 +260,12 @@ impl Engine for ImplBackend {
     }
 
     fn stop(&mut self) -> Result<(), String> {
+        let request = self.core_pid.as_ref().unwrap().send(OpCMD::stop);
+        Arbiter::spawn(request
+            .and_then(|_| futures::future::ok(()))
+            .map_err(|err| panic!(err)));
+        self.core_pid = None;
+        self.started = false;
         Ok(())
     }
 
@@ -229,7 +279,7 @@ impl Engine for ImplBackend {
             return Err(EngineError::InvalidHeight);
         }
         let parent_header = {
-            let ledger = self.ledger.read().unwrap();
+            let ledger = self.ledger.read();
             ledger
                 .get_header_by_height(header.height)
                 .ok_or(EngineError::UnknownAncestor)?
@@ -243,7 +293,7 @@ impl Engine for ImplBackend {
             return Err(EngineError::InvalidTimestamp);
         }
 
-        // check votes
+// check votes
         {
             let votes = header.votes.as_ref().ok_or(EngineError::LackVotes(
                 self.validator_set.two_thirds_majority() + 1,
@@ -252,16 +302,16 @@ impl Engine for ImplBackend {
             if votes.verify_signs(CryptoHash::hash(header), |validator| {
                 self.validator_set.get_by_address(validator).is_some()
             }) == false
-            {
-                return Err(EngineError::InvalidSignature);
-            }
+                {
+                    return Err(EngineError::InvalidSignature);
+                }
             let maj32 = self.validator_set.two_thirds_majority();
             if maj32 + 1 > votes.len() {
                 return Err(EngineError::LackVotes(maj32 + 1, votes.len()));
             }
         }
 
-        // FIXME add more check
+// FIXME add more check
         Ok(())
     }
 
@@ -276,9 +326,26 @@ impl Engine for ImplBackend {
             .map(|_| ())
     }
 
+    fn new_chain_header(&mut self, proposal: &Proposal) -> EngineResult {
+        trace!("Backend handle new chain header, hash: {:?}, height: {:?}", proposal.block().hash(), proposal.block().height());
+        if !self.started {
+            return Err(EngineError::EngineNotStarted);
+        }
+        // send a new round event
+        let core = self.core_pid.as_ref().unwrap();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        let request = core.send(NewHeaderEvent { proposal: proposal.clone() });
+        Arbiter::spawn(request.and_then(move |result| {
+            tx.send(result);
+            futures::future::ok(())
+        }).map_err(|err| panic!(err)));
+        rx.recv().unwrap();
+        Ok(())
+    }
+
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
         let parent_header = {
-            let ledger = self.ledger.read().unwrap();
+            let ledger = self.ledger.read();
             ledger
                 .get_header_by_height(header.height - 1)
                 .ok_or("not found parent block for the header".to_string())?
@@ -301,8 +368,69 @@ impl Engine for ImplBackend {
     //
     // Note, the block header and state database might be updated to reflect any
     // consensus rules that happen at finalization (e.g. block rewards).
-    fn finalize(&mut self, header: &mut Header) -> Result<(), String> {
+    fn finalize(&mut self, header: &Header) -> Result<(), String> {
         self.proposed_block_hash = EMPTY_HASH;
+        // send a new round event
+        let core = self.core_pid.as_ref().unwrap();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        let request = core.send(FinalCommittedEvent {});
+        Arbiter::spawn(request.and_then(move |result| {
+            tx.send(result);
+            futures::future::ok(())
+        }).map_err(|err| panic!(err)));
+        rx.recv().unwrap();
         Ok(())
+    }
+
+    fn seal(&mut self, new_block: &mut Block, abort: Receiver<()>) -> Result<Block, EngineError> {
+        if !self.started {
+            return Err(EngineError::EngineNotStarted);
+        }
+
+        let header = new_block.mut_header();
+
+        // TODO update new validator
+        // TODO add sign
+        let delay = {
+            let now = chrono::Local::now().timestamp() as u64;
+            if now > header.time {
+                now - header.time
+            } else {
+                0
+            }
+        };
+
+        info!("Wait for the timestamp of header for ajustting the block period, delay: {}", delay);
+        ::std::thread::sleep(Duration::from_secs(delay));
+
+        // add clear function
+        self.prepare(header).unwrap();
+        // ready to new consensus
+        self.new_chain_header(&Proposal(new_block.clone())).unwrap();
+        let commit_tx = self.commit_rx.clone();
+
+        let mut receover = || {
+            self.finalize(new_block.header()).unwrap();
+        };
+
+        loop {
+            select! {
+                recv(abort) -> _ =>  {
+                    receover();
+                    return Err(EngineError::Interrupt);
+                },
+                recv(commit_tx) -> result => {
+                    let block = result.unwrap();
+                    let got = block.height() <= new_block.height();
+                    assert!(got);
+
+                    if block.hash() == new_block.hash() {
+                        receover();
+                        return Ok(block);
+                    }
+                },
+            }
+        }
+        unimplemented!();
     }
 }

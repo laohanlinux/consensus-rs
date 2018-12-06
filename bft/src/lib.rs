@@ -2,6 +2,7 @@
 #![feature(nll)]
 #![feature(vec_remove_item)]
 #![feature(get_type_id)]
+#![feature(duration_as_u128)]
 
 extern crate serde;
 #[macro_use]

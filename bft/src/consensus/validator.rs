@@ -1,6 +1,7 @@
 use bigint::U128;
 use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::ethkey::Address;
+use ethereum_types::H160;
 
 use types::{Height, Validator};
 
@@ -122,9 +123,9 @@ impl ValidatorSet for ImplValidatorSet {
             .validators
             .iter()
             .any(|validator| *validator.address() == address)
-        {
-            return false;
-        }
+            {
+                return false;
+            }
         self.validators.push(Validator::new(address));
         self.validators
             .sort_by_key(|validator| *validator.address());
@@ -257,7 +258,7 @@ mod tests {
                     round,
                     val_set.proposer.as_ref().unwrap()
                 )
-                .unwrap();
+                    .unwrap();
             })
         }
         writeln!(io::stdout(), "========================").unwrap();
@@ -280,7 +281,7 @@ mod tests {
                     0,
                     val_set.proposer.as_ref().unwrap()
                 )
-                .unwrap();
+                    .unwrap();
             })
         }
     }

@@ -8,6 +8,11 @@ use super::types::{Proposal, View};
 use crate::types::Height;
 use super::error::ConsensusResult;
 
+#[derive(Debug, Message)]
+pub enum OpCMD {
+    stop,
+}
+
 #[derive(Debug)]
 pub enum RequestEventType {
     Block,

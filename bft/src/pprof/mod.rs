@@ -17,7 +17,7 @@ pub fn spawn_signal_handler(dir: String) {
             info!("Receive a signal, code: {}", item.unwrap());
             System::current().stop();
             flame::end("read file");
-            ::std::fs::create_dir_all(&dir);
+            ::std::fs::create_dir_all(&dir).unwrap();
             let graph = dir.to_owned() + "/flame-graph.html";
             info!("flame graph=> {}", graph);
             flame::dump_html(&mut File::create(graph).unwrap()).unwrap();

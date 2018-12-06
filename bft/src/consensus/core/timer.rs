@@ -15,13 +15,13 @@ pub enum Op {
     Interval,
 }
 
-pub struct Timer{
+pub struct Timer {
     name: String,
     pub interval: Duration,
-    pub pid: Addr<Core>,
+    pub pid: Option<Addr<Core>>,
 }
 
-impl Actor for Timer{
+impl Actor for Timer {
     type Context = Context<Self>;
     fn started(&mut self, ctx: &mut Self::Context) {
         info!("{}'s timer actor has started", self.name);
@@ -34,14 +34,22 @@ impl Handler<Op> for Timer {
     fn handle(&mut self, msg: Op, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             Op::Stop => ctx.stop(),
-            Op::Interval => self.pid.do_send(TimerEvent {}),
+            Op::Interval => {
+                if self.pid.is_some() {
+                    self.pid.as_ref().unwrap().do_send(TimerEvent {})
+                }
+            }
         }
         ()
     }
 }
 
-impl Timer{
+impl Timer {
     pub fn new(name: String, interval: Duration, pid: Addr<Core>) -> Self {
-        Timer { name, interval, pid }
+        Timer { name, interval, pid: Some(pid) }
+    }
+
+    pub fn new_tmp(name: String, interval: Duration) -> Self {
+        Timer { name, interval, pid: None }
     }
 }

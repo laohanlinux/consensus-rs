@@ -77,7 +77,7 @@ pub fn decrypt_commit_bytes<T: AsRef<[u8]>>(
     let digest = hash(input);
     let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
     input.write_u8(op_code as u8).unwrap();
-    input.write(digest.as_ref()).unwrap();
+    input.write_all(digest.as_ref()).unwrap();
     let buffer = input.into_inner();
     let digest: Hash = hash(buffer);
     match recover_bytes(signture, digest.as_ref()) {
@@ -94,7 +94,7 @@ pub fn decrypt_commit_bytes<T: AsRef<[u8]>>(
 pub fn encrypt_commit_bytes(digest: &Hash, secret: &Secret) -> Signature {
     let mut input = Cursor::new(vec![0_u8; 1 + HASH_SIZE]);
     input.write_u8(MessageType::Commit as u8).unwrap();
-    input.write(digest.as_ref()).unwrap();
+    input.write_all(digest.as_ref()).unwrap();
     let buffer = input.into_inner();
     let digest = hash(buffer);
     digest.sign(secret).unwrap()

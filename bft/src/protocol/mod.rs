@@ -165,7 +165,7 @@ impl<V> MessageManage<V>
     pub fn add(&mut self, msg: GossipMessage) -> Result<(), String> {
         self.val_set
             .get_by_address(msg.address)
-            .ok_or("".to_string())?;
+            .ok_or_else(|| "".to_string())?;
         self.add_verify_message(msg)
     }
 
@@ -199,12 +199,11 @@ impl<V> MessageManage<V>
 }
 
 pub(crate) fn to_priority(msg_code: MessageType, view: View) -> i64 {
-    let mut priority: i64 = 0;
-    if msg_code == MessageType::RoundChange {
-        priority = (view.height * 1000) as i64;
+    let priority = if msg_code == MessageType::RoundChange {
+        (view.height * 1000) as i64
     } else {
-        priority = (view.height * 1000 + view.round + 10 + msg_code as u64) as i64;
-    }
+        (view.height * 1000 + view.round + 10 + msg_code as u64) as i64
+    };
     -priority
 }
 

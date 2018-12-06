@@ -7,7 +7,7 @@ use crate::{
     store::schema::Schema,
     types::block::{Block, Header},
     types::transaction::Transaction,
-    types::{Height, Validator},
+    types::{Height, Validator, ValidatorArray},
 };
 
 pub struct LastMeta {
@@ -120,9 +120,7 @@ impl Ledger {
     }
 
     //  FIXME store it into schema
-    pub fn get_validators(&self, height: Height) -> &Vec<Validator> {
-        &self.validators
-    }
+    pub fn get_validators(&self, height: Height) -> &Vec<Validator> { &self.validators }
 
     pub fn get_block_by_height(&self, height: Height) -> Option<Block> {
         if let Some(hash) = self.schema.block_hash_by_height(height) {
@@ -191,6 +189,14 @@ impl Ledger {
         self.block_cache
             .get_mut()
             .insert(hash, block.clone());
+    }
+
+    pub fn add_validators(&mut self, validators: Vec<Validator>) {
+        let val_array = ValidatorArray::from(validators.clone());
+        let mut validators_entry = self.schema.validators();
+        validators_entry.set(val_array);
+        // cache it
+        self.validators = validators;
     }
 
     pub fn load_genesis(&mut self) {

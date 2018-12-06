@@ -12,6 +12,7 @@ use cryptocurrency_kit::crypto::EMPTY_HASH;
 use crate::{
     types::{Timestamp, Gas, Difficulty, Height, EMPTY_ADDRESS},
     types::block::{Block, Header},
+    types::{Validator, Validators},
     config::GenesisConfig,
     common,
 };
@@ -26,19 +27,32 @@ pub(crate) fn store_genesis_block(genesis_config: &GenesisConfig, ledger: Arc<Rw
         ledger.load_genesis();
         return Ok(());
     }
-    // TODO Add more xin
-    let proposer = common::string_to_address(&genesis_config.proposer)?;
-    let epoch_time: DateTime<Local> = {
-        let epoch_time_str = genesis_config.epoch_time.to_string();
-        DateTime::from_str(&epoch_time_str)
-    }.map_err(|err: ParseError| err.to_string())?;
+    // add validators
+    {
+        let validators: Validators = genesis_config.validator.iter().map(|validator| {
+            common::string_to_address(validator).unwrap()
+        }).map(|address| {
+            Validator::new(address)
+        }).collect();
+        ledger.add_validators(validators);
+    }
 
-    let extra = genesis_config.extra.as_bytes().to_vec();
-    let header = Header::new(EMPTY_HASH, proposer, EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
-                             0, 0, 0, genesis_config.gas_used + 10, genesis_config.gas_used,
-                             epoch_time.timestamp() as Timestamp, None, Some(extra));
-    let block = Block::new(header, vec![]);
-    ledger.add_genesis_block(&block);
-    ledger.load_genesis();
+    // TODO Add more xin
+    {
+        let proposer = common::string_to_address(&genesis_config.proposer)?;
+        let epoch_time: DateTime<Local> = {
+            let epoch_time_str = genesis_config.epoch_time.to_string();
+            DateTime::from_str(&epoch_time_str)
+        }.map_err(|err: ParseError| err.to_string())?;
+
+        let extra = genesis_config.extra.as_bytes().to_vec();
+        let header = Header::new(EMPTY_HASH, proposer, EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
+                                 0, 0, 0, genesis_config.gas_used + 10, genesis_config.gas_used,
+                                 epoch_time.timestamp() as Timestamp, None, Some(extra));
+        let block = Block::new(header, vec![]);
+        ledger.add_genesis_block(&block);
+        ledger.load_genesis();
+    }
+
     Ok(())
 }
