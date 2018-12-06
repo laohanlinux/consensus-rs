@@ -35,6 +35,8 @@ pub enum ConsensusError {
 
 #[derive(Debug, Fail)]
 pub enum EngineError {
+    #[fail(display = "engine is not started")]
+    EngineNotStarted,
     #[fail(display = "Invalid proposal")]
     InvalidProposal,
     #[fail(display = "Invalid signature")]
@@ -55,6 +57,8 @@ pub enum EngineError {
     InvalidBlock,
     #[fail(display = "Unknown ancestor")]
     UnknownAncestor,
+    #[fail(display = "Consensus interrupt")]
+    Interrupt,
     #[fail(display = "An unknown error has occurred, ({})", _0)]
     Unknown(String),
 }

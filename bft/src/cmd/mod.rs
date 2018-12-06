@@ -36,6 +36,7 @@ use crate::{
 };
 
 pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
+    print_art();
     init_log();
     let result = init_config(config);
     if result.is_err() {
@@ -138,6 +139,33 @@ fn init_genesis(chain: &mut Chain) -> ChainResult {
     chain.store_genesis_block()
 }
 
+fn start_consensus_engine(config: &Config, chain: Arc<Chain>) {
+    use crate::consensus::backend;
+}
+
 fn init_signal_handle() {
     spawn_signal_handler(*common::random_dir());
+}
+
+fn print_art() {
+    let art = r#"
+    A large collection of ASCII art drawings of bears and other related animal ASCII art pictures.
+
+    lazy bears by Joan G. Stark
+
+    _,-""`""-~`)
+    (`~_,=========\
+    |---,___.-.__,\
+    |        o     \ ___  _,,,,_     _.--.
+    \      `^`    /`_.-"~      `~-;`     \
+       \_      _  .'                 `,     |
+         |`-                           \'__/
+        /                      ,_       \  `'-.
+       /    .-""~~--.            `"-,   ;_    /
+    |              \               \  | `""`
+    \__.--'`"-.   /_               |'
+                  `"`  `~~~---..,     |
+                                 \ _.-'`-.
+    "#;
+    println!("{}", art);
 }

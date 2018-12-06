@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::storage::values::StorageValue;
+use cryptocurrency_kit::ethkey::Address;
 use kvdb_rocksdb::Database;
 
+use super::entry::Entry;
 use super::list_index::ListIndex;
 use super::map_index::MapIndex;
-use types::block::{Block, Header};
-use types::transaction::Transaction;
-use types::{Bloom, Height};
+use crate::{
+    types::block::{Block, Header},
+    types::{Validator, ValidatorArray, Bloom, Height, transaction::Transaction},
+};
 
 macro_rules! define_name {
     (
@@ -29,6 +32,7 @@ define_name!(
     CONFIGS => "configs";
     CONSENSUS_MESSAGE_CACHE => "consensus_message_cache";
     CONSENSUS_ROUND => "consensus_round";
+    VALIDATORS => "validators";
 );
 
 struct TxLocation {
@@ -68,6 +72,10 @@ impl Schema {
         self.blocks().get(&hash).unwrap()
     }
 
+    pub fn validators(&self) -> Entry<ValidatorArray> {
+        Entry::new(VALIDATORS, self.db.clone())
+    }
+
     /// Returns the height of the last committed block.
     ///
     /// #Panic
@@ -83,7 +91,6 @@ impl Schema {
         );
         len - 1
     }
-
 }
 
 #[cfg(test)]
@@ -133,7 +140,7 @@ mod tests {
                 "transaction hash ===> {:#?}",
                 zero_tx.hash().short()
             )
-            .unwrap();
+                .unwrap();
             {
                 let buf = zero_tx.clone().into_bytes();
                 let zero_tx1 = Transaction::from_bytes(::std::borrow::Cow::from(buf));

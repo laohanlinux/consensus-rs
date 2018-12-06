@@ -19,9 +19,12 @@ use super::{Bloom, Difficulty, Gas, Height, Timestamp};
 pub struct Header {
     pub prev_hash: Hash,
     pub proposer: Address,
-    pub root: Hash, // state root
-    pub tx_hash: Hash, // transactions root
-    pub receipt_hash: Hash, // receipt_root
+    pub root: Hash,
+    // state root
+    pub tx_hash: Hash,
+    // transactions root
+    pub receipt_hash: Hash,
+    // receipt_root
     pub bloom: Bloom,
     pub difficulty: Difficulty,
     pub height: Height,
@@ -118,7 +121,11 @@ impl Block {
         &self.header
     }
 
-    pub fn height(&self) -> Height {self.header.height}
+    pub fn mut_header(&mut self) -> &mut Header {
+        &mut self.header
+    }
+
+    pub fn height(&self) -> Height { self.header.height }
 
     pub fn transactions(&self) -> &Vec<Transaction> {
         &self.transactions
@@ -150,7 +157,7 @@ mod tests {
     use std::io::{self, Write};
 
     #[test]
-    fn header(){
+    fn header() {
         let header = Header::zero_header();
         writeln!(io::stdout(), "{:#?}", header).unwrap();
         let j_str = serde_json::to_string(&header).unwrap();

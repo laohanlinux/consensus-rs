@@ -37,16 +37,15 @@ lazy_static! {
 }
 
 pub type author_fn = Fn(Handshake) -> bool;
-pub type handshake_packet_fn = Fn() -> Handshake;
+pub type HandshakePacketFn = Fn() -> Handshake;
 
 pub fn author_handshake(genesis: Hash) -> impl Fn(Handshake) -> bool {
-    let author = move |handshake: Handshake| {
+    move |handshake: Handshake| {
         if *handshake.genesis() != genesis {
             return false;
         }
         true
-    };
-    author
+    }
 }
 
 pub enum ServerEvent {
@@ -212,7 +211,7 @@ impl TcpServer {
         let delay = rand::random::<u64>() % 100;
         let timer_fut = Delay::new(Instant::now() + Duration::from_millis(delay));
         tokio::spawn(timer_fut.and_then(move |_| {
-        // try to connect, dial it
+            // try to connect, dial it
             TcpDial::new(
                 remote_id,
                 local_id,

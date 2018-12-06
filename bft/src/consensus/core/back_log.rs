@@ -46,44 +46,47 @@ impl Handler<GossipMessage> for BackLogActor {
                 let preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(msg_payload));
                 let view = preprepare.view;
                 let weight = to_priority(MessageType::Preprepare, view);
-                self.qp.entry(msg.address).or_insert_with(||{
+                self.qp.entry(msg.address).or_insert_with(|| {
                     let mut qp = PriorityQueue::new();
                     qp.push(msg, weight);
                     qp
                 });
-            },
+            }
             other_code => {
                 let msg_payload = msg.msg();
                 let subject: Subject = Subject::from_bytes(Cow::from(msg_payload));
                 let weight = to_priority(other_code.clone(), subject.view);
-                self.qp.entry(msg.address).or_insert_with(||{
+                self.qp.entry(msg.address).or_insert_with(|| {
                     let mut qp = PriorityQueue::new();
                     qp.push(msg, weight);
                     qp
                 });
-            },
+            }
         }
         ()
     }
 }
 
 impl BackLogActor {
+    pub fn new(core_pid: Addr<Core>) -> Self {
+        BackLogActor { core: core_pid, qp: HashMap::new() }
+    }
+
     fn process_back_log(&self, ctx: &mut actix::Context<Self>) {
-        ctx.run_interval(Duration::from_millis(100), |act, ctx|{
-            for (key, value) in act.qp.iter_mut(){
+        ctx.run_interval(Duration::from_millis(100), |act, ctx| {
+            for (key, value) in act.qp.iter_mut() {
                 for (message, _) in value.iter_mut() {
                     let mut view;
                     match &message.code {
                         MessageType::RoundChange => {
                             let preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(message.msg()));
                             view = preprepare.view;
-                        },
+                        }
                         other_type => {
                             let subject: Subject = Subject::from_bytes(Cow::from(message.msg()));
                             view = subject.view;
-                        },
+                        }
                     }
-
                 }
             }
         });
