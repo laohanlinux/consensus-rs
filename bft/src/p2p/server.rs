@@ -52,7 +52,7 @@ pub fn author_handshake(genesis: Hash) -> impl Fn(Handshake) -> bool {
 }
 
 pub enum ServerEvent {
-    Connected(PeerId, BoundType, RawMessage),
+    Connected(PeerId, BoundType, Addr<Session>, RawMessage),
     // handshake
     Disconnected(PeerId),
     Message(RawMessage),
@@ -75,13 +75,15 @@ pub struct TcpServer {
 struct ConnectInfo {
     connect_time: chrono::DateTime<chrono::Utc>,
     bound_type: BoundType,
+    pid: Addr<Session>,
 }
 
 impl ConnectInfo {
-    fn new(connect_time: chrono::DateTime<chrono::Utc>, bound_type: BoundType) -> Self {
+    fn new(connect_time: chrono::DateTime<chrono::Utc>, bound_type: BoundType, pid: Addr<Session>) -> Self {
         ConnectInfo {
             connect_time: connect_time,
             bound_type: bound_type,
+            pid: pid,
         }
     }
 }
@@ -166,9 +168,9 @@ impl Handler<ServerEvent> for TcpServer {
     type Result = Result<PeerId, P2PError>;
     fn handle(&mut self, msg: ServerEvent, ctx: &mut Self::Context) -> Self::Result {
         match msg {
-            ServerEvent::Connected(ref peer_id, ref bound_type, ref raw_msg) => {
+            ServerEvent::Connected(ref peer_id, ref bound_type, ref pid, ref raw_msg) => {
                 trace!("Connected peer: {:?}", peer_id);
-                return self.handle_handshake(bound_type.clone(), raw_msg.payload());
+                return self.handle_handshake(bound_type.clone(), pid.clone(), raw_msg.payload());
             }
             ServerEvent::Disconnected(ref peer_id) => {
                 trace!("Disconnected peer: {:?}", peer_id);
@@ -269,6 +271,7 @@ impl TcpServer {
     fn handle_handshake(
         &mut self,
         bound_type: BoundType,
+        pid: Addr<Session>,
         payload: &Vec<u8>,
     ) -> Result<PeerId, P2PError> {
         use std::borrow::Cow;
@@ -289,13 +292,15 @@ impl TcpServer {
             BoundType::InBound => {}
             BoundType::OutBound => {}
         }
-        let connect_info = ConnectInfo::new(chrono::Utc::now(), BoundType::InBound);
+        let connect_info = ConnectInfo::new(chrono::Utc::now(), BoundType::InBound, pid);
         self.peers.entry(peer_id.clone()).or_insert(connect_info);
         Ok(peer_id)
     }
 
     fn broadcast(&self, msg: &RawMessage) {
-        for (peer, _) in &self.peers {}
+        for (_, info) in &self.peers {
+            info.pid.do_send(msg.clone());
+        }
     }
 }
 
