@@ -4,7 +4,7 @@ use std::net;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use actix_broker::BrokerSubscribe;
 use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::crypto::{CryptoHash, Hash};

@@ -1,12 +1,16 @@
 use std::borrow::Cow;
 use std::any::{Any, TypeId};
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 
-use protocol::GossipMessage;
-use super::types::{Proposal, View};
-use crate::types::Height;
-use super::error::ConsensusResult;
+use crate::{
+    protocol::GossipMessage,
+    types::Height,
+};
+use super::{
+    types::{Proposal, View},
+    error::ConsensusResult,
+};
 
 #[derive(Debug, Message)]
 pub enum OpCMD {
@@ -28,7 +32,7 @@ fn is_view<T: ?Sized + Any>(_s: &T) -> bool {
 }
 
 #[derive(Debug, Message)]
-pub struct NewHeaderEvent{
+pub struct NewHeaderEvent {
     pub proposal: Proposal,
 }
 

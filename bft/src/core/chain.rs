@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use parking_lot::RwLock;
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::crypto::Hash;

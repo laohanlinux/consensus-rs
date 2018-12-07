@@ -8,7 +8,7 @@ use cryptocurrency_kit::storage::values::StorageValue;
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
-use actix::prelude::*;
+use ::actix::prelude::*;
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
@@ -17,9 +17,11 @@ use std::hash::{Hash as stdHash, Hasher};
 use std::io::Cursor;
 use std::sync::RwLock;
 
-use consensus::types::View;
-use consensus::validator::{self, fn_selector, ImplValidatorSet, ValidatorSet};
-use types::EMPTY_ADDRESS;
+use crate::{
+    consensus::types::View,
+    consensus::validator::{self, fn_selector, ImplValidatorSet, ValidatorSet},
+    types::EMPTY_ADDRESS,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub enum State {

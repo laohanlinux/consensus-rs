@@ -1,4 +1,4 @@
-use actix::prelude::*;
+use ::actix::prelude::*;
 use actix_broker::BrokerIssue;
 
 use crate::types::block::{Header, Block};

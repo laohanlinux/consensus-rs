@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::time::Duration;
 
 #[macro_use]
-use actix::prelude::*;
+use ::actix::prelude::*;
 use futures::future;
 use futures::prelude::*;
 use libp2p::core::PublicKey;
@@ -11,7 +11,7 @@ use libp2p::multiaddr::{Multiaddr, ToMultiaddr};
 use libp2p::PeerId;
 
 #[macro_use]
-use subscriber::*;
+use crate::subscriber::*;
 
 pub struct DiscoverService {
     p2p_pid: Addr<ProcessSignals>,

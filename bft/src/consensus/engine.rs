@@ -1,7 +1,7 @@
 use cryptocurrency_kit::ethkey::Address;
 use crossbeam::crossbeam_channel::Sender;
 
-use types::block::{Header, Block};
+use crate::types::block::{Header, Block};
 
 //pub trait Engine {
 //    fn author(&self, header: &Header)-> Result<Address, String>;

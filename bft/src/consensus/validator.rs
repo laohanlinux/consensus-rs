@@ -3,7 +3,7 @@ use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::ethkey::Address;
 use ethereum_types::H160;
 
-use types::{Height, Validator};
+use crate::types::{Height, Validator};
 
 pub type Validators = Vec<Validator>;
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use chrono::Local;
 use chrono_humanize::HumanTime;

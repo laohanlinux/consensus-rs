@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::thread::{spawn, JoinHandle};
 use std::time::Duration;
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::ethkey::{Generator, KeyPair, Random};
 use futures::Future;
@@ -185,7 +185,6 @@ fn start_mint(
     txpool: Arc<RwLock<Box<TxPool>>>,
     engine: Box<Engine>,
 ) -> Addr<Minner> {
-    use actix::prelude::*;
     let minter = key_pair.address();
     Minner::create(move |ctx| {
         let (tx, rx) = crossbeam::channel::bounded(1);

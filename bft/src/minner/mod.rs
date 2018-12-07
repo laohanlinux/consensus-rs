@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crossbeam::scope;
-use actix::prelude::*;
+use ::actix::prelude::*;
 use actix_broker::{BrokerSubscribe, BrokerIssue};
 use parking_lot::RwLock;
 use crossbeam::{Sender, Receiver, channel::bounded};

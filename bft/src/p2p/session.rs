@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::mpsc::sync_channel;
 use std::time::Duration;
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use cryptocurrency_kit::storage::values::StorageValue;
 use futures::stream::once;
 use futures::Future;

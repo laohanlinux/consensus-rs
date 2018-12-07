@@ -11,8 +11,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::io::Cursor;
 
-use types::{Height, block::Block};
-use types::votes::Votes;
+use crate::types::{Height, block::Block, votes::Votes};
 
 pub type Round = u64;
 

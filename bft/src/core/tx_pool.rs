@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::BTreeMap;
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use priority_queue::PriorityQueue;
 use cryptocurrency_kit::crypto::{Hash, hash, EMPTY_HASH};
 use evmap::{self, WriteHandle, ReadHandle};
