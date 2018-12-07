@@ -112,7 +112,7 @@ mod tests{
     fn t_random() {
         (0..10).for_each(|_|{
             let keypair = Random{}.generate().unwrap();
-            println!("{:?}", keypair.address());
+            println!("{:?}, {:?}",  keypair, keypair.address());
         });
     }
 }

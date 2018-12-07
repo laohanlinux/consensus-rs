@@ -96,7 +96,7 @@ impl Schema {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::random_dir;
+    use crate::common::random_dir;
     use cryptocurrency_kit::ethkey::{Generator, KeyPair, Random, Secret};
     use std::io::{self, Write};
     use std::sync::Arc;

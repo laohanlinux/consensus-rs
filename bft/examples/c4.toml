@@ -6,9 +6,10 @@ request_time = 3000 # ms
 peer_id = "QmVQVbmHE2BwFjeKx4eAKwGBtZ5348ufVUUR8jG2pa8uhG"
 ttl = 3000
 store = "/tmp/block/c4"
+secret = "f9093897ce74d867cdbc5c5a1b6e840ffb4343cbb0ea5b3ad5525edc6bad8c95"
 
 [genesis]
-validator = ["0x5701fbd05e77cac003a6894e4b2a3c12287ed313", "0x6510f8d84c0b8b3091fc3abe2fdff6036c90865d", "0x3140bda54df92f9453b487afdb3bcce02d154c74", "0x7035dafbeac1792ab5b7ed5c903ac63522eb534a","0x6730933a2cb6f26af786d7f5979efbdf29049c3a"]
+validator = ["0x7193d8f91724b39f10cc81e94934c187fa257277", "0x93908f59c6eff007d228398349214acb6b4ac9a4", "0x72d5c75fd6703414aa87f79b3e4797dd09cd9251", "0x58096d35c7a8ff67eba159f33cea7740fc9a737c","0xc759616c865d349ec2afced268fc6f33ff7414a4"]
 epoch_time = 2018-09-09T09:09:09.09-09:09
 proposer = "0x5701fbd05e77cac003a6894e4b2a3c12287ed313"
 gas_used = 10000

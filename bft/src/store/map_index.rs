@@ -145,7 +145,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::random_dir;
+    use crate::common::random_dir;
     use std::io::{self, Write};
 
     const IDX_NAME: &'static str = "idx_name_";
