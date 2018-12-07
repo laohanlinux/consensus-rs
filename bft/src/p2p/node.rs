@@ -1,4 +1,4 @@
-use actix::prelude::*;
+use ::actix::prelude::*;
 
 use super::{
     server::{TcpServer, ServerEvent},

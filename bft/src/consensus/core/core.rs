@@ -1,4 +1,4 @@
-use actix::prelude::*;
+use ::actix::prelude::*;
 use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::Address;

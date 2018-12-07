@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Rg <daimaldd@gmail.com>"]
 description = "bft consensus"
 license = "GPL-3.0"
+edition = "2018"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }

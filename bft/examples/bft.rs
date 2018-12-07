@@ -5,7 +5,7 @@ extern crate clap;
 extern crate log;
 extern crate actix;
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use clap::{Arg, App, SubCommand, ArgMatches};
 
 use std::sync::mpsc::channel;

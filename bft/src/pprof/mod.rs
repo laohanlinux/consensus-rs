@@ -1,6 +1,6 @@
 use std::fs::File;
 
-use actix::prelude::*;
+use ::actix::prelude::*;
 use futures::prelude::*;
 use tokio::prelude::*;
 use tokio_signal::unix::{Signal, SIGINT, SIGTERM};

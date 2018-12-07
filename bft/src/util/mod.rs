@@ -1,7 +1,6 @@
-use actix::prelude::*;
+use ::actix::prelude::*;
 
 use std::time::Duration;
-
 
 #[derive(Message)]
 pub enum TimerOp {

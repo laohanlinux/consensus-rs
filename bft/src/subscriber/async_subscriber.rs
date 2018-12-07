@@ -1,4 +1,4 @@
-use actix::prelude::*;
+use ::actix::prelude::*;
 
 
 pub struct Subscribe<M: Message>(pub Recipient<M>)

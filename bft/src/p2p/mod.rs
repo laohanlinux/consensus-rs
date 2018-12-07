@@ -6,4 +6,4 @@ pub mod session;
 pub mod codec;
 pub mod protocol;
 #[macro_use]
-pub use subscriber::*;
+pub use crate::subscriber::*;
