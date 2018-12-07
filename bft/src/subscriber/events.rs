@@ -21,11 +21,11 @@ pub struct ChainEventSubscriber {
 impl Actor for ChainEventSubscriber {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         info!("Chain event subscriber has started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         info!("Chain event subscriber has stopped");
     }
 }
@@ -71,11 +71,11 @@ pub struct BroadcastEventSubscriber {
 impl Actor for BroadcastEventSubscriber {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         info!("Broadcast event subscriber has started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         info!("Broadcast event subscriber has stopped");
     }
 }

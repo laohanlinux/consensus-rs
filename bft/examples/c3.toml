@@ -1,3 +1,4 @@
+chain_id = 10
 ip = "127.0.0.1"
 port = 7693
 block_period = 3000 # ms

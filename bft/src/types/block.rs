@@ -142,7 +142,7 @@ impl Block {
 
     pub fn add_votes(&mut self, signatures: Vec<Signature>) {
         let ref mut header = self.header;
-        let mut votes = header.votes.get_or_insert(Votes::new(vec![]));
+        let votes = header.votes.get_or_insert(Votes::new(vec![]));
         votes.add_votes(&signatures);
     }
 

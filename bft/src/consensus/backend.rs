@@ -2,33 +2,40 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use actix::prelude::*;
-use futures::Future;
-use parking_lot::RwLock;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use chrono::Local;
 use chrono_humanize::HumanTime;
-use crossbeam::crossbeam_channel::{self, Sender, Receiver};
+use crossbeam::crossbeam_channel::{self, Receiver, Sender, RecvTimeoutError, TryRecvError};
+use crossbeam::scope;
 use cryptocurrency_kit::common::to_keccak;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH, HASH_SIZE};
 use cryptocurrency_kit::ethkey::keccak::Keccak256;
 use cryptocurrency_kit::ethkey::{
     sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
 };
+use futures::sync::oneshot;
+use futures::Future;
+use futures::future::Err;
+use futures::*;
 use lru_time_cache::LruCache;
+use parking_lot::RwLock;
+use tokio_threadpool::ThreadPool;
 
 use super::{
-    core::core::Core,
-    events::{NewHeaderEvent, FinalCommittedEvent, OpCMD},
     config::Config,
     consensus::Engine,
+    core::core::Core,
     error::{EngineError, EngineResult},
+    events::{FinalCommittedEvent, NewHeaderEvent, OpCMD},
     types::Proposal,
-    validator::{ImplValidatorSet, ValidatorSet, fn_selector},
+    validator::{fn_selector, ImplValidatorSet, ValidatorSet},
 };
 use crate::{
-    core::ledger::Ledger,
-    core::chain::Chain,
+    error::{ChainError, ChainResult},
     common::merkle_tree_root,
+    core::chain::Chain,
+    protocol::GossipMessage,
+    subscriber::events::{BroadcastEvent, BroadcastEventSubscriber},
     types::block::{Block, Header},
     types::{Height, Validator, EMPTY_ADDRESS},
 };
@@ -42,7 +49,7 @@ pub trait Backend {
     ///TODO
     fn event_mux(&self);
     /// broadcast sends a message to all validators (include itself)
-    fn broadcast(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
+    fn broadcast(&self, vals: &ValidatorSet, msg: GossipMessage) -> Result<(), ()>;
     /// gossip sends a message to all validators (exclude self)
     fn gossip(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
     /// commit a proposal with seals
@@ -62,7 +69,11 @@ pub trait Backend {
     fn get_header_by_height(&self, height: Height) -> Option<Header>;
 }
 
-pub fn new_impl_backend(keypair: KeyPair, chain: Arc<Chain>) -> ImplBackend {
+pub fn new_impl_backend(
+    keypair: KeyPair,
+    chain: Arc<Chain>,
+    subscriber: Addr<BroadcastEventSubscriber>,
+) -> ImplBackend {
     let request_time = chain.config.request_time.as_millis();
     let block_period = chain.config.block_period.as_millis();
     let config = Config {
@@ -71,7 +82,8 @@ pub fn new_impl_backend(keypair: KeyPair, chain: Arc<Chain>) -> ImplBackend {
         chain_id: 0,
     };
 
-    let addresses: Vec<Address> = chain.get_validators(chain.get_last_height())
+    let addresses: Vec<Address> = chain
+        .get_validators(chain.get_last_height())
         .iter()
         .map(|validator| *validator.address())
         .collect();
@@ -83,6 +95,7 @@ pub fn new_impl_backend(keypair: KeyPair, chain: Arc<Chain>) -> ImplBackend {
 
     ImplBackend {
         core_pid: None,
+        broadcast_subscriber: subscriber,
         started: false,
         validaor: Validator::new(keypair.address()),
         validator_set: validator_set,
@@ -92,7 +105,7 @@ pub fn new_impl_backend(keypair: KeyPair, chain: Arc<Chain>) -> ImplBackend {
         proposed_block_hash: proposed_block_hash,
         commit_tx: tx,
         commit_rx: rx,
-        ledger: chain.get_ledger().clone(),
+        chain: chain,
         config: config,
     }
 }
@@ -100,6 +113,7 @@ pub fn new_impl_backend(keypair: KeyPair, chain: Arc<Chain>) -> ImplBackend {
 #[derive(Clone)]
 pub struct ImplBackend {
     core_pid: Option<Addr<Core>>,
+    broadcast_subscriber: Addr<BroadcastEventSubscriber>,
     validaor: Validator,
     validator_set: ImplValidatorSet,
     key_pair: KeyPair,
@@ -109,7 +123,7 @@ pub struct ImplBackend {
     // proposal hash it from local node
     commit_tx: Sender<Block>,
     commit_rx: Receiver<Block>,
-    ledger: Arc<RwLock<Ledger>>,
+    chain: Arc<Chain>,
     started: bool,
     config: Config,
 }
@@ -128,12 +142,14 @@ impl Backend for ImplBackend {
     fn event_mux(&self) {}
 
     /// TODO
-    fn broadcast(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()> {
-        Err(())
+    fn broadcast(&self, _vals: &ValidatorSet, msg: GossipMessage) -> Result<(), ()> {
+        self.broadcast_subscriber
+            .do_send(BroadcastEvent::Consensus(msg));
+        Ok(())
     }
 
     /// TODO
-    fn gossip(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()> {
+    fn gossip(&self, _vals: &ValidatorSet, _payload: &[u8]) -> Result<(), ()> {
         Err(())
     }
 
@@ -147,18 +163,32 @@ impl Backend for ImplBackend {
             self.commit_tx.send(block).unwrap();
         }
         let mut block = proposal.block().clone();
-        let mut votes = block.mut_votes();
+        let votes = block.mut_votes();
         votes.unwrap().add_votes(&seals);
-        let mut ledger = self.ledger.write();
-        ledger.add_block(&block);
+        let result = self.chain.insert_block(&block);
+        if let Err(err) = result {
+            match err {
+                ChainError::Exists(_) => {}
+                other => {
+                    error!(
+                        "Failed to committed a new block, hash:{}, height:{}, proposer:{}",
+                        block.hash().short(),
+                        block.height(),
+                        block.coinbase()
+                    );
+                }
+            }
+            return Ok(());
+        }
+
         info!(
-            "committed a new block, hash:{}, height:{}, proposer:{}",
+            "Committed a new block, hash:{}, height:{}, proposer:{}",
             block.hash().short(),
             block.height(),
             block.coinbase()
         );
         // TODO add block broadcast
-        Err("".to_owned())
+        Ok(())
     }
 
     /// TODO
@@ -220,38 +250,34 @@ impl Backend for ImplBackend {
     }
 
     fn last_proposal(&self) -> Result<Proposal, ()> {
-        let ledger = self.ledger.read();
-        let block = ledger.get_last_block();
-        Ok(Proposal::new(block.clone()))
+        let block = self.chain.get_last_block();
+        Ok(Proposal::new(block))
     }
 
     fn has_proposal(&self, hash: &Hash, height: Height) -> bool {
-        let ledger = self.ledger.read();
-        let block_hash = ledger.get_block_hash_by_height(height);
-        block_hash.map_or(EMPTY_HASH, |v| v) == *hash
+        if let Some(block_hash) = self.chain.get_block_hash_by_height(height) {
+            return block_hash == *hash;
+        }
+        false
     }
 
     fn get_proposer(&self, height: Height) -> Address {
-        let header = {
-            let ledger = self.ledger.read();
-            ledger.get_header_by_height(height)
-        };
+        let header = self.chain.get_header_by_height(height);
         header.map_or(*EMPTY_ADDRESS, |header| header.proposer)
     }
 
     // TODO
-    fn parent_validators(&self, proposal: &Proposal) -> &Self::ValidatorsType {
+    fn parent_validators(&self, _proposal: &Proposal) -> &Self::ValidatorsType {
         &self.validator_set
     }
 
     /// TODO
-    fn has_bad_proposal(&self, hash: Hash) -> bool {
+    fn has_bad_proposal(&self, _hash: Hash) -> bool {
         false
     }
 
     fn get_header_by_height(&self, height: Height) -> Option<Header> {
-        let ledger = self.ledger.read();
-        ledger.get_header_by_height(height)
+        self.chain.get_header_by_height(height)
     }
 }
 
@@ -266,9 +292,11 @@ impl Engine for ImplBackend {
 
     fn stop(&mut self) -> Result<(), String> {
         let request = self.core_pid.as_ref().unwrap().send(OpCMD::stop);
-        Arbiter::spawn(request
-            .and_then(|_| futures::future::ok(()))
-            .map_err(|err| panic!(err)));
+        Arbiter::spawn(
+            request
+                .and_then(|_| futures::future::ok(()))
+                .map_err(|err| panic!(err)),
+        );
         self.core_pid = None;
         self.started = false;
         Ok(())
@@ -279,14 +307,12 @@ impl Engine for ImplBackend {
         Ok(header.proposer.clone())
     }
 
-    fn verify_header(&self, header: &Header, seal: bool) -> Result<(), EngineError> {
+    fn verify_header(&self, header: &Header, _seal: bool) -> Result<(), EngineError> {
         if header.height == 0 {
             return Err(EngineError::InvalidHeight);
         }
         let parent_header = {
-            let ledger = self.ledger.read();
-            ledger
-                .get_header_by_height(header.height)
+            self.chain.get_header_by_height(header.height)
                 .ok_or(EngineError::UnknownAncestor)?
         };
         if parent_header.hash() != header.prev_hash {
@@ -332,27 +358,35 @@ impl Engine for ImplBackend {
     }
 
     fn new_chain_header(&mut self, proposal: &Proposal) -> EngineResult {
-        trace!("Backend handle new chain header, hash: {:?}, height: {:?}", proposal.block().hash(), proposal.block().height());
+        trace!(
+            "Backend handle new chain header, hash: {:?}, height: {:?}",
+            proposal.block().hash(),
+            proposal.block().height()
+        );
         if !self.started {
             return Err(EngineError::EngineNotStarted);
         }
         // send a new round event
         let core = self.core_pid.as_ref().unwrap();
         let (tx, rx) = crossbeam_channel::bounded(1);
-        let request = core.send(NewHeaderEvent { proposal: proposal.clone() });
-        Arbiter::spawn(request.and_then(move |result| {
-            tx.send(result);
-            futures::future::ok(())
-        }).map_err(|err| panic!(err)));
+        let request = core.send(NewHeaderEvent {
+            proposal: proposal.clone(),
+        });
+        Arbiter::spawn(
+            request
+                .and_then(move |result| {
+                    tx.send(result);
+                    futures::future::ok(())
+                })
+                .map_err(|err| panic!(err)),
+        );
         rx.recv().unwrap();
         Ok(())
     }
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
         let parent_header = {
-            let ledger = self.ledger.read();
-            ledger
-                .get_header_by_height(header.height - 1)
+            self.chain.get_header_by_height(header.height - 1)
                 .ok_or("not found parent block for the header".to_string())?
         };
         // TODO maybe reset validator
@@ -373,21 +407,25 @@ impl Engine for ImplBackend {
     //
     // Note, the block header and state database might be updated to reflect any
     // consensus rules that happen at finalization (e.g. block rewards).
-    fn finalize(&mut self, header: &Header) -> Result<(), String> {
+    fn finalize(&mut self, _header: &Header) -> Result<(), String> {
         self.proposed_block_hash = EMPTY_HASH;
         // send a new round event
         let core = self.core_pid.as_ref().unwrap();
         let (tx, rx) = crossbeam_channel::bounded(1);
         let request = core.send(FinalCommittedEvent {});
-        Arbiter::spawn(request.and_then(move |result| {
-            tx.send(result);
-            futures::future::ok(())
-        }).map_err(|err| panic!(err)));
+        Arbiter::spawn(
+            request
+                .and_then(move |result| {
+                    tx.send(result);
+                    futures::future::ok(())
+                })
+                .map_err(|err| panic!(err)),
+        );
         rx.recv().unwrap();
         Ok(())
     }
 
-    fn seal(&mut self, new_block: &mut Block, abort: Receiver<()>) -> Result<Block, EngineError> {
+    fn seal(&mut self, new_block: &mut Block, abort: Receiver<()>) -> EngineResult {
         if !self.started {
             return Err(EngineError::EngineNotStarted);
         }
@@ -405,7 +443,10 @@ impl Engine for ImplBackend {
             }
         };
 
-        info!("Wait for the timestamp of header for ajustting the block period, delay: {}", delay);
+        info!(
+            "Wait for the timestamp of header for ajustting the block period, delay: {}",
+            delay
+        );
         ::std::thread::sleep(Duration::from_secs(delay));
 
         // add clear function
@@ -418,24 +459,68 @@ impl Engine for ImplBackend {
             self.finalize(new_block.header()).unwrap();
         };
 
-        loop {
-            select! {
-                recv(abort) -> _ =>  {
-                    receover();
-                    return Err(EngineError::Interrupt);
-                },
-                recv(commit_tx) -> result => {
-                    let block = result.unwrap();
-                    let got = block.height() <= new_block.height();
-                    assert!(got);
-
-                    if block.hash() == new_block.hash() {
-                        receover();
-                        return Ok(block);
+        let tx = worker.sender().clone();
+        let new_hash = new_block.hash().clone();
+        let new_height = new_block.height();
+        let res = oneshot::spawn(
+            future::lazy(move || {
+                while true {
+                    if let Err(err) = abort.try_recv() {
+                        match err {
+                            TryRecvError::Disconnected => return futures::future::err(EngineError::Interrupt),
+                            _ => {}
+                        }
+                    } else {
+                        return futures::future::err(EngineError::Interrupt);
                     }
-                },
+
+                    match commit_tx.recv_timeout(Duration::from_secs(1)) {
+                        Ok(block) => {
+                            let got = block.height() <= new_height;
+                            assert!(got);
+
+                            if block.hash() == new_hash {
+                                return futures::future::ok(block);
+                            }
+                        }
+                        Err(err) => {
+                            match err {
+                                RecvTimeoutError => {
+                                    break;
+                                }
+                                other => {
+                                    return panic!(other);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                println!("Running on the pool");
+                futures::future::err(EngineError::Interrupt)
+            }),
+            &tx,
+        );
+
+
+        let chain = self.chain.clone();
+        Arbiter::spawn(res.then(move |res| {
+            match res {
+                Ok(block) => {
+                    chain.insert_block(&block);
+                }
+                Err(err) => {
+                    error!("Consensus fail, err:{:?}", err);
+                }
             }
-        }
-        unimplemented!();
+            futures::future::ok::<(), String>(())
+        }).map_err(|err| {
+            panic!(err)
+        }));
+        Ok(())
     }
+}
+
+lazy_static! {
+    pub static ref worker: ThreadPool = ThreadPool::new();
 }

@@ -38,7 +38,7 @@ impl TxPool for BaseTxPool {
 
     fn get_n_tx(&self, n: u64) -> Vec<&Transaction> {
         let mut txs = vec![];
-        let mut i: u64 = 0;
+        let i: u64 = 0;
         for (tx_hash, _) in self.pq.iter() {
             if i >= n {
                 break;
@@ -52,7 +52,7 @@ impl TxPool for BaseTxPool {
 
     fn add_tx(&mut self, tx: Transaction) -> Result<u64, TxPoolError> {
         let idx = self.get_idx(tx.get_hash().unwrap());
-        let mut v: &mut BTreeMap<_, _> = self.txs.get_mut(idx).unwrap();
+        let v: &mut BTreeMap<_, _> = self.txs.get_mut(idx).unwrap();
         if v.get(&tx.get_hash().unwrap()).is_some() {
             return Ok(self.pq.len() as u64);
         }
@@ -115,6 +115,6 @@ mod tests {
     #[test]
     fn t_txpool() {
 //        let mut v = vec![];
-        (0..10_0000).for_each(|idx| {})
+        (0..10_0000).for_each(|_idx| {})
     }
 }

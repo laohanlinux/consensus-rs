@@ -120,7 +120,7 @@ impl Ledger {
     }
 
     //  FIXME store it into schema
-    pub fn get_validators(&self, height: Height) -> &Vec<Validator> { &self.validators }
+    pub fn get_validators(&self, _height: Height) -> &Vec<Validator> { &self.validators }
 
     pub fn get_block_by_height(&self, height: Height) -> Option<Block> {
         if let Some(hash) = self.schema.block_hash_by_height(height) {

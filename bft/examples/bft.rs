@@ -11,7 +11,7 @@ use clap::{Arg, App, SubCommand, ArgMatches};
 use std::sync::mpsc::channel;
 
 fn main() {
-    let config = bft::config::Config::default();
+    let _config = bft::config::Config::default();
     let matches = App::new("bft-consensus")
         .version("v0.1")
         .author("Rg. <daimaldd@gmail.com>")

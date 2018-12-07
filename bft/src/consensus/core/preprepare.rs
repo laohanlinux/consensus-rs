@@ -31,7 +31,7 @@ impl HandlePreprepare for Core {
         //TODO add lock hash prove
         if self.current_state.height() == request.proposal().block().height() && self.is_proposer()
             {
-                let mut preprepre = PrePrepare::new(self.current_view(), request.proposal.clone());
+                let preprepre = PrePrepare::new(self.current_view(), request.proposal.clone());
                 self.broadcast(&GossipMessage::new(
                     MessageType::Preprepare,
                     preprepre.into_bytes(),
@@ -41,7 +41,7 @@ impl HandlePreprepare for Core {
     }
 
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
-        let mut preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(msg.msg()));
+        let preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(msg.msg()));
         let result = self.check_message(MessageType::Preprepare, &preprepare.view);
         // Ensure we have the same view with the PRE-PREPARE message
         // If it is old message, see if we need to broadcast COMMIT
@@ -62,7 +62,7 @@ impl HandlePreprepare for Core {
                     }
                     let pre_height = block.height() - 1;
                     let mut val_set = self.backend.validators(pre_height).clone();
-                    let previous_proposer = self.backend.get_proposer(pre_height);
+                    let _previous_proposer = self.backend.get_proposer(pre_height);
                     val_set.calc_proposer(&block.header().prev_hash, pre_height, preprepare.view.round);
                     if val_set.is_proposer(src.address().clone())
                         && self.backend.has_proposal(&block.hash(), block.height())

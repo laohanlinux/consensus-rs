@@ -169,7 +169,7 @@ mod test {
     #[test]
     fn test_cmp() {
         {
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -181,7 +181,7 @@ mod test {
             );
             assert_eq!(a, b);
 
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 2,
                     round: 1,
@@ -193,7 +193,7 @@ mod test {
             );
             assert_ne!(a, b);
 
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 2,
                     round: 1,
@@ -208,7 +208,7 @@ mod test {
 
         /// Greeter
         {
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -219,7 +219,7 @@ mod test {
                 },
             );
             assert!(a > b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -234,7 +234,7 @@ mod test {
 
         /// Less
         {
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 0,
@@ -245,7 +245,7 @@ mod test {
                 },
             );
             assert!(a < b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 0,
                     round: 12,
@@ -260,7 +260,7 @@ mod test {
 
         /// GreeterEq
         {
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -271,7 +271,7 @@ mod test {
                 },
             );
             assert!(a >= b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 2,
                     round: 1,
@@ -282,7 +282,7 @@ mod test {
                 },
             );
             assert!(a >= b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -293,7 +293,7 @@ mod test {
                 },
             );
             assert!(a >= b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -308,7 +308,7 @@ mod test {
 
         /// LessEq
         {
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -319,7 +319,7 @@ mod test {
                 },
             );
             assert!(a <= b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 1,
@@ -330,7 +330,7 @@ mod test {
                 },
             );
             assert!(a <= b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 1,
                     round: 0,
@@ -341,7 +341,7 @@ mod test {
                 },
             );
             assert!(a <= b);
-            let (mut a, mut b) = (
+            let (a, b) = (
                 View {
                     height: 0,
                     round: 12,

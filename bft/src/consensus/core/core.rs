@@ -64,12 +64,12 @@ pub struct Core {
 
 impl Actor for Core {
     type Context = Context<Self>;
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         info!("core actor has started");
         self.start_new_zero_round();
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         info!("core actor has stopped");
     }
 }
@@ -77,7 +77,7 @@ impl Actor for Core {
 impl Handler<NewHeaderEvent> for Core {
     type Result = ();
 
-    fn handle(&mut self, msg: NewHeaderEvent, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: NewHeaderEvent, _ctx: &mut Self::Context) -> Self::Result {
         let proposal = msg.proposal.clone();
         self.start_new_zero_round();
         let result: ConsensusResult = <Core as HandlerRequst>::handle(self, &CSRequest::new(proposal));
@@ -89,7 +89,7 @@ impl Handler<NewHeaderEvent> for Core {
 impl Handler<FinalCommittedEvent> for Core {
     type Result = ();
 
-    fn handle(&mut self, msg: FinalCommittedEvent, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: FinalCommittedEvent, _ctx: &mut Self::Context) -> Self::Result {
         self.stop_timer();
         self.wait_round_change = false;
         ()
@@ -99,7 +99,7 @@ impl Handler<FinalCommittedEvent> for Core {
 impl Handler<MessageEvent> for Core {
     type Result = ConsensusResult;
 
-    fn handle(&mut self, msg: MessageEvent, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: MessageEvent, _ctx: &mut Self::Context) -> Self::Result {
         self.handle_message(&msg.payload)
     }
 }
@@ -107,7 +107,7 @@ impl Handler<MessageEvent> for Core {
 impl Handler<BackLogEvent> for Core {
     type Result = ConsensusResult;
 
-    fn handle(&mut self, msg: BackLogEvent, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: BackLogEvent, _ctx: &mut Self::Context) -> Self::Result {
         let msg = msg.msg;
         let src = Validator::new(msg.address().unwrap());
         self.handle_check_message(&msg, &src)
@@ -117,7 +117,7 @@ impl Handler<BackLogEvent> for Core {
 impl Handler<TimerEvent> for Core {
     type Result = ();
 
-    fn handle(&mut self, msg: TimerEvent, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: TimerEvent, _ctx: &mut Self::Context) -> Self::Result {
         ()
     }
 }
@@ -152,7 +152,7 @@ impl Core {
         let request_time = Duration::from_millis(chain.config.request_time.as_millis() as u64);
         let f_request_time = request_time.clone();
         let r_request_time = request_time.clone();
-        let block_period = Duration::from_secs(chain.config.block_period.as_secs());
+        let _block_period = Duration::from_secs(chain.config.block_period.as_secs());
         let config = Config {
             request_time: chain.config.request_time.as_millis() as u64,
             block_period: chain.config.block_period.as_secs(),
@@ -196,7 +196,7 @@ impl Core {
     // p2p message
     fn handle_message(&mut self, payload: &[u8]) -> ConsensusResult {
         use std::borrow::Cow;
-        let mut msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
+        let msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
         let address = msg.address().map_err(|err| ConsensusError::Unknown(err))?;
         self.validators.get_by_address(address.clone()).ok_or(ConsensusError::UnauthorizedAddress)?;
         self.handle_check_message(&msg, &Validator::new(address))
@@ -309,8 +309,7 @@ impl Core {
     pub fn broadcast(&self, msg: &GossipMessage) {
         let mut copy_msg = msg.clone();
         self.finalize_message(&mut copy_msg).unwrap();
-        let payload = copy_msg.clone().into_payload();
-        self.backend.broadcast(&self.validators, &payload).unwrap();
+        self.backend.broadcast(&self.validators,  copy_msg).unwrap();
     }
 
     // 启动新的轮次，触发的条件
@@ -348,7 +347,7 @@ impl Core {
     }
 
     // has receive +2/3 round change
-    pub(crate) fn start_new_round(&mut self, round: Round, pre_change_prove: &[u8]) {
+    pub(crate) fn start_new_round(&mut self, round: Round, _pre_change_prove: &[u8]) {
         trace!("before start new round");
         assert_ne!(
             round, 0,

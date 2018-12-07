@@ -32,14 +32,14 @@ impl Actor for BackLogActor {
         self.process_back_log(ctx);
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         info!("Back Log actor has stoppped");
     }
 }
 
 impl Handler<GossipMessage> for BackLogActor {
     type Result = ();
-    fn handle(&mut self, msg: GossipMessage, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: GossipMessage, _ctx: &mut Context<Self>) -> Self::Result {
         match &msg.code {
             MessageType::Preprepare => {
                 let msg_payload = msg.msg();
@@ -73,16 +73,16 @@ impl BackLogActor {
     }
 
     fn process_back_log(&self, ctx: &mut actix::Context<Self>) {
-        ctx.run_interval(Duration::from_millis(100), |act, ctx| {
-            for (key, value) in act.qp.iter_mut() {
+        ctx.run_interval(Duration::from_millis(100), |act, _ctx| {
+            for (_key, value) in act.qp.iter_mut() {
                 for (message, _) in value.iter_mut() {
-                    let mut view;
+                    let view;
                     match &message.code {
                         MessageType::RoundChange => {
                             let preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(message.msg()));
                             view = preprepare.view;
                         }
-                        other_type => {
+                        _other_type => {
                             let subject: Subject = Subject::from_bytes(Cow::from(message.msg()));
                             view = subject.view;
                         }

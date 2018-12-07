@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn tschema() {
         let db = Arc::new(Database::open_default(&random_dir()).unwrap());
-        let mut schema = Schema::new(db.clone());
+        let schema = Schema::new(db.clone());
 
         /// block_hashes_by_height
         {
@@ -143,7 +143,7 @@ mod tests {
                 .unwrap();
             {
                 let buf = zero_tx.clone().into_bytes();
-                let zero_tx1 = Transaction::from_bytes(::std::borrow::Cow::from(buf));
+                let _zero_tx1 = Transaction::from_bytes(::std::borrow::Cow::from(buf));
             }
             tx.put(&zero_tx.hash(), zero_tx.clone());
             let zero_tx1 = schema.transaction().get(&zero_tx.hash());

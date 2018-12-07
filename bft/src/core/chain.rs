@@ -9,7 +9,7 @@ use futures::Future;
 use crate::{
     config::Config,
     error::{ChainError, ChainResult},
-    types::{Height, Validators, ValidatorArray, Validator, block::Block},
+    types::{Height, Validators, ValidatorArray, Validator, block::Block, block::Header},
     subscriber::events::{ChainEvent, ChainEventSubscriber},
 };
 use super::genesis::store_genesis_block;
@@ -17,7 +17,6 @@ use super::ledger::Ledger;
 
 pub struct Chain {
     ledger: Arc<RwLock<Ledger>>,
-    //    subscriber: Addr<ProcessSignals>,
     subscriber: Addr<ChainEventSubscriber>,
     genesis: Option<Block>,
     pub config: Config,
@@ -44,10 +43,10 @@ impl Chain {
         }
         let req1 = self.subscriber.send(ChainEvent::NewBlock(block.clone()));
         let req2 = self.subscriber.send(ChainEvent::NewHeader(block.header().clone()));
-        Arbiter::spawn(req1.and_then(|res| {
+        Arbiter::spawn(req1.and_then(|_res| {
             futures::future::ok(())
         }).map_err(|err| panic!(err)));
-        Arbiter::spawn(req2.and_then(|res| {
+        Arbiter::spawn(req2.and_then(|_res| {
             futures::future::ok(())
         }).map_err(|err| panic!(err)));
 
@@ -66,11 +65,19 @@ impl Chain {
         self.ledger.read().get_last_block().clone()
     }
 
+    pub fn get_block_hash_by_height(&self, height: Height) -> Option<Hash> {
+        self.ledger.read().get_block_hash_by_height(height)
+    }
+
+    pub fn get_header_by_height(&self, height: Height) -> Option<Header> {
+        self.ledger.read().get_header_by_height(height)
+    }
+
     pub fn get_last_hash(&self) -> Hash {
         self.ledger.read().get_last_block_hash().clone()
     }
 
-    pub fn add_validators(&self, height: Height, validators: Vec<Address>) -> ChainResult {
+    pub fn add_validators(&self, _height: Height, validators: Vec<Address>) -> ChainResult {
         let validators = validators.iter().map(|address| Validator::new(*address)).collect();
         self.ledger.write().add_validators(validators);
         Ok(())

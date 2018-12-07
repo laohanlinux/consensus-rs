@@ -26,7 +26,7 @@ impl RoundChangeSet<ImplValidatorSet> {
 
     pub fn add(&mut self, round: Round, msg: GossipMessage) -> Result<usize, String> {
         let val_set = self.validator_set.clone();
-        let mut msg_manager = self.round_changes.entry(round).or_insert_with(|| {
+        let msg_manager = self.round_changes.entry(round).or_insert_with(|| {
             MessageManage::new(View::default(), val_set)
         });
         msg_manager.add(msg).map(|_| { 0 })?;

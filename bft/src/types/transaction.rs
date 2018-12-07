@@ -85,12 +85,12 @@ impl Transaction {
     }
 
     /// TODO
-    pub fn sign(&mut self, chain_id: u64, secret: &Secret) {
+    pub fn sign(&mut self, _chain_id: u64, secret: &Secret) {
         let signature = sign_bytes(secret, &TransactionSignature::packet_signature(&self));
         self.signature = Some(signature.unwrap());
     }
 
-    pub fn verify_sign(&self, chai_id: u64) -> bool {
+    pub fn verify_sign(&self, _chai_id: u64) -> bool {
         if self.signature.is_none() {
             return false;
         }
