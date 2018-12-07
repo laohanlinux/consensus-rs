@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use ::actix::prelude::*;
 use cryptocurrency_kit::crypto::Hash;
-use cryptocurrency_kit::ethkey::{Generator, KeyPair, Random};
+use cryptocurrency_kit::ethkey::{Generator, KeyPair, Secret, Random};
 use futures::Future;
 use kvdb_rocksdb::Database;
 use libp2p::{Multiaddr, PeerId};
@@ -46,6 +46,8 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
     }
     let config = result.unwrap();
     println!("--> {:?}", config);
+    let secret = Secret::from_str(&config.secret).expect("Secret is uncorrect");
+    let key_pair = KeyPair::from_secret(secret).unwrap();
     let ledger = init_store(&config)?;
     let ledger: Arc<RwLock<Ledger>> = Arc::new(RwLock::new(ledger));
     // init subscriber
@@ -64,7 +66,6 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
 
     let broadcast_subscriber = BroadcastEventSubscriber::new(SubscriberType::Async).start();
 
-    let key_pair = Random.generate().unwrap();
     let engine = start_consensus_engine(
         &config,
         key_pair.clone(),

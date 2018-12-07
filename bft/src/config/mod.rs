@@ -20,6 +20,7 @@ pub struct Config {
     #[serde(with = "serde_millis")]
     pub ttl: Duration,
     pub store: String,
+    pub secret: String,
     pub genesis: Option<GenesisConfig>,
 }
 
@@ -44,6 +45,7 @@ impl Default for Config {
             peer_id: "QmbBr2fHwLFKvHkAq1BpbEr4dvR8P6orQxHkVaxeJsJiW8".to_string(),
             ttl: Duration::from_millis(5 * 1000),
             store: *random_dir(),
+            secret: "".into(),
             genesis: None,
         }
     }

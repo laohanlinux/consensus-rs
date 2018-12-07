@@ -69,7 +69,7 @@ mod tests {
     use std::io::{self, Write};
 
     use super::*;
-    use common::random_dir;
+    use crate::common::random_dir;
     use cryptocurrency_kit::crypto::EMPTY_HASH;
 
     #[test]

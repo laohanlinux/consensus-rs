@@ -283,7 +283,7 @@ mod tests {
     use cryptocurrency_kit::types::Zero;
     use std::io::{self, Write};
 
-    use common::random_dir;
+    use crate::common::random_dir;
     use rand::random;
     use std::borrow::Borrow;
 
