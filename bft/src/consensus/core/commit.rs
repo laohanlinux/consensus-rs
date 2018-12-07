@@ -51,18 +51,18 @@ impl HandleCommit for Core {
     }
 
     // TOOD
-    fn broadcast_commit(&mut self, subject: &Subject, digest: Hash) {
+    fn broadcast_commit(&mut self, subject: &Subject, _digest: Hash) {
         trace!("broadcast commit");
         let commit_seal = encrypt_commit_bytes(&subject.digest, self.keypair.secret());
         let encoded_subject = subject.clone().into_bytes();
-        let mut msg = GossipMessage::new(MessageType::Commit, encoded_subject, Some(commit_seal));
+        let msg = GossipMessage::new(MessageType::Commit, encoded_subject, Some(commit_seal));
         self.broadcast(&msg);
     }
 
     // handle commit type message
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError> {
         let subject = Subject::from(msg.msg());
-        let current_subject = self.current_state.subject().unwrap();
+        let _current_subject = self.current_state.subject().unwrap();
         self.check_message(MessageType::Commit, &subject.view)?;
         match msg.address() {
             Ok(sender) => {
@@ -91,7 +91,7 @@ impl HandleCommit for Core {
         commit_seal: Option<&Signature>,
         commit_subject: &Subject,
         sender: Address,
-        src: Validator,
+        _src: Validator,
     ) -> Result<(), ConsensusError> {
         if commit_seal.is_none() {
             return Err(ConsensusError::Unknown("commit seal is nil".to_string()));

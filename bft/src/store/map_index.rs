@@ -168,7 +168,7 @@ mod tests {
     fn key_iter() {
         let db = Arc::new(newdb());
         let mut index: MapIndex<String, String> = MapIndex::new(IDX_NAME, db.clone());
-        let mut keys = index.keys();
+        let keys = index.keys();
         assert_eq!(keys.count(), 0);
 
         (0..100).for_each(|idx| {
@@ -210,7 +210,7 @@ mod tests {
             (0..100).for_each(|idx| {
                 index.put(&format!("{}", idx), idx + 1);
             });
-            let mut keys = index.keys();
+            let keys = index.keys();
             assert_eq!(keys.count(), 100);
         }
 

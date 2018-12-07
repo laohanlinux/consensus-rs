@@ -36,7 +36,7 @@ pub fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) ->
     vals[seed as usize].clone()
 }
 
-fn randon_seed(blh: &Hash, height: Height, vals: &Validators) -> u64 {
+fn randon_seed(blh: &Hash, _height: Height, vals: &Validators) -> u64 {
     let blh = blh.as_ref();
     let mut seed_buf = [0; 16];
     for (idx, item) in seed_buf[..8].iter_mut().enumerate() {
@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_address_sort() {
-        let mut address_list = vec![
+        let address_list = vec![
             Address::from(100),
             Address::from(10),
             Address::from(21),
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn test_validator_set() {
-        let mut address_list = vec![
+        let address_list = vec![
             Address::from(100),
             Address::from(10),
             Address::from(21),
@@ -263,7 +263,7 @@ mod tests {
         }
         writeln!(io::stdout(), "========================").unwrap();
         {
-            let mut random_hash = || {
+            let random_hash = || {
                 let mut hash = [0; HASH_SIZE];
                 (0..HASH_SIZE).for_each(|bit| {
                     let x: u8 = random();
@@ -290,14 +290,14 @@ mod tests {
     fn test_validator_set_two_third() {
         /// more than 3 validators
         {
-            let mut address_list = vec![
+            let address_list = vec![
                 Address::from(100),
                 Address::from(10),
                 Address::from(21),
                 Address::from(31),
                 Address::from(3),
             ];
-            let mut val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
+            let val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
             assert_eq!(val_set.two_thirds_majority(), 4);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(3));
@@ -306,8 +306,8 @@ mod tests {
 
         /// equal 3 validators
         {
-            let mut address_list = vec![Address::from(100), Address::from(10), Address::from(3)];
-            let mut val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
+            let address_list = vec![Address::from(100), Address::from(10), Address::from(3)];
+            let val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
             assert_eq!(val_set.two_thirds_majority(), 3);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(2));

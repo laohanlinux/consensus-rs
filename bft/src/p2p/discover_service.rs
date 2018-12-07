@@ -20,11 +20,11 @@ pub struct DiscoverService {
 impl Actor for DiscoverService {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+    fn started(&mut self, _ctx: &mut Context<Self>) {
         trace!("Discover service started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         trace!("Discover service stopped");
     }
 }
@@ -51,7 +51,7 @@ impl DiscoverService {
                             .unwrap();
                     }
                     MdnsPacket::Response(response) => {
-                        let peers_size = response.discovered_peers().count();
+                        let _peers_size = response.discovered_peers().count();
                         for peer in response.discovered_peers() {
                             let id = peer.id().clone();
                             if peer_id.clone() == id {
@@ -73,7 +73,7 @@ impl DiscoverService {
             }
         });
 
-        Arbiter::spawn(future.then(|res| {
+        Arbiter::spawn(future.then(|_res| {
             trace!("mDNS service exit");
             future::result(Ok(()))
         }));
@@ -110,7 +110,7 @@ mod tests {
 
     impl Handler<P2PEvent> for Worker {
         type Result = ();
-        fn handle(&mut self, msg: P2PEvent, ctx: &mut Self::Context) {
+        fn handle(&mut self, msg: P2PEvent, _ctx: &mut Self::Context) {
             match msg {
                 P2PEvent::AddPeer(_, _) => {
                     writeln!(

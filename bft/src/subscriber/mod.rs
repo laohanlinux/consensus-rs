@@ -123,7 +123,7 @@ mod tests {
         let subscribe_pid = Actor::create(|_| ProcessSignals {
             subscribers: vec![],
         });
-        (0..10).for_each(|idx| {
+        (0..10).for_each(|_idx| {
             let name = format!("{}", Local::now().time().nanosecond());
             let worker = Worker::create(|_| Worker {
                 name: name,

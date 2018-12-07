@@ -21,6 +21,7 @@ pub fn merkle_tree_root<T: StorageValue>(input: Vec<T>) -> Hash {
         v.push(bytes);
     }
     let root = MerkleTree::new_merkle_tree(v).root.unwrap();
+//    info!("{:?}, len: {}", &root.data);
     Hash::from_slice(&root.data).unwrap()
 }
 

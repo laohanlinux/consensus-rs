@@ -49,6 +49,7 @@ extern crate futures;
 extern crate libp2p;
 extern crate tokio;
 extern crate tokio_signal;
+extern crate tokio_threadpool;
 extern crate bytes;
 extern crate toml;
 extern crate parking_lot;

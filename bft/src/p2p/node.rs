@@ -14,11 +14,11 @@ pub struct Node {
 impl Actor for Node {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         info!("Node actor has started");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         info!("Node actor has stopped");
     }
 }

@@ -100,7 +100,7 @@ impl BaseIndex {
         let mut prefix_key = vec![0; name_len + index_len + key.size()];
         prefix_key[..name_len].copy_from_slice(self.name.as_bytes());
 
-        if let Some(ref prefix) = self.index_id {
+        if let Some(ref _prefix) = self.index_id {
             prefix_key[name_len..index_len]
                 .copy_from_slice(&self.index_id.as_ref().map_or(&vec![], |item| item));
         }
@@ -157,9 +157,9 @@ impl BaseIndex {
         V: StorageValue,
     {
         let mut prefix_buf = self.prefix_key(subprefix);
-        let mut base_prefix_len = prefix_buf.len();
+        let base_prefix_len = prefix_buf.len();
 
-        let mut iter_prefix = {
+        let iter_prefix = {
             let mut buf = vec![0; from.size()];
             from.write(&mut buf);
             prefix_buf.extend_from_slice(&buf);
@@ -291,7 +291,7 @@ mod tests {
     fn t() {
         let db = Arc::new(Database::open_default(&random_dir()).unwrap());
         {
-            let index = BaseIndex::new("transaction", IndexType::Map, db.clone());
+            let _index = BaseIndex::new("transaction", IndexType::Map, db.clone());
             let mut index = BaseIndex::new("transaction", IndexType::Map, db.clone());
             let prefix = "block_".to_string();
             (0..100).for_each(|idx| {
@@ -332,7 +332,7 @@ mod tests {
         }
 
         {
-            let iter = index
+            let _iter = index
                 .iter_from::<String, String, String, String>(&"".to_owned(), &"block".to_owned());
         }
     }

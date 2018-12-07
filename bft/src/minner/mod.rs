@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crossbeam::scope;
 use actix::prelude::*;
 use actix_broker::{BrokerSubscribe, BrokerIssue};
 use parking_lot::RwLock;
@@ -10,6 +11,9 @@ use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::crypto::CryptoHash;
 use cryptocurrency_kit::crypto::hash;
+use tokio_threadpool;
+use futures::*;
+use futures::sync::oneshot;
 
 use crate::{
     subscriber::events::ChainEvent,
@@ -26,10 +30,11 @@ pub struct Minner {
     minter: Address,
     key_pair: KeyPair,
     chain: Arc<Chain>,
-    txpool: Box<TxPool>,
+    txpool: Arc<RwLock<Box<TxPool>>>,
     engine: Box<Engine>,
     seal_tx: Sender<()>,
     seal_rx: Receiver<()>,
+    worker: tokio_threadpool::ThreadPool,
 }
 
 impl Actor for Minner {
@@ -38,9 +43,10 @@ impl Actor for Minner {
     fn started(&mut self, ctx: &mut Self::Context) {
         self.subscribe_async::<ChainEvent>(ctx);
         info!("Start minner actor");
+        self.mine(self.seal_rx.clone());
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         info!("Minner actor has stoppped");
     }
 }
@@ -48,15 +54,40 @@ impl Actor for Minner {
 
 impl Handler<ChainEvent> for Minner {
     type Result = ();
-    fn handle(&mut self, msg: ChainEvent, ctx: &mut Self::Context) -> Self::Result {
-        // stop current consensus
-        self.seal_tx.send(()).unwrap();
-        let seal = self.seal_rx.clone();
-        self.mine(seal);
+    fn handle(&mut self, msg: ChainEvent, _ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            ChainEvent::NewHeader(last_header) => {
+                info!("Rceive a new header, hash:{:?}, height: {:?}", last_header.hash(), last_header.height);
+                // stop current consensus
+                self.seal_tx.send(()).unwrap();
+                let seal = self.seal_rx.clone();
+                self.mine(seal);
+            }
+            _ => {}
+        }
     }
 }
 
 impl Minner {
+    pub fn new(minter: Address,
+               key_pair: KeyPair,
+               chain: Arc<Chain>,
+               txpool: Arc<RwLock<Box<TxPool>>>,
+               engine: Box<Engine>,
+               tx: Sender<()>,
+               rx: Receiver<()>) -> Self {
+        Minner {
+            minter,
+            key_pair,
+            chain,
+            txpool,
+            engine,
+            seal_tx: tx,
+            seal_rx: rx,
+            worker: tokio_threadpool::ThreadPool::new(),
+        }
+    }
+
     fn mine(&mut self, abort: Receiver<()>) {
         let mut block = self.packet_next_block();
         self.engine.seal(&mut block, abort);

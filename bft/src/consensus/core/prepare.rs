@@ -34,7 +34,7 @@ impl HandlePrepare for Core {
         ));
     }
 
-    fn verify_prepare(&mut self, subject: &Subject, src: &Validator) -> ConsensusResult {
+    fn verify_prepare(&mut self, subject: &Subject, _src: &Validator) -> ConsensusResult {
         let current_view = self.current_view();
         if current_view != subject.view {
             return Err(ConsensusError::InconsistentSubject);
@@ -62,7 +62,7 @@ impl HandlePrepare for Core {
         Ok(())
     }
 
-    fn accept(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
+    fn accept(&mut self, msg: &GossipMessage, _src: &Validator) -> ConsensusResult {
         self.current_state
             .prepares
             .add(msg.clone())

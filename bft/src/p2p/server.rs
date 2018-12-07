@@ -28,7 +28,7 @@ use crate::{
     common::{multiaddr_to_ipv4, random_uuid},
     error::P2PError,
     subscriber::P2PEvent,
-    subscriber::events::BroadcastEvent,
+    subscriber::events::{BroadcastEvent, ChainEvent},
 };
 
 pub const MAX_OUTBOUND_CONNECTION_MAILBOX: usize = 1 << 10;
@@ -150,7 +150,7 @@ impl Handler<BroadcastEvent> for TcpServer {
     type Result = ();
 
     /// handle p2p event
-    fn handle(&mut self, msg: BroadcastEvent, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             BroadcastEvent::Consensus(msg) => {
                 let header = RawHeader::new(P2PMsgCode::Consensus, 10, chrono::Local::now().timestamp_millis() as u64);
@@ -164,9 +164,25 @@ impl Handler<BroadcastEvent> for TcpServer {
     }
 }
 
+//FIXME
+impl Handler<ChainEvent> for TcpServer {
+    type Result = ();
+
+    /// handle p2p event
+    fn handle(&mut self, msg: ChainEvent, ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            ChainEvent::NewBlock(block) => {
+                ctx.notify(BroadcastEvent::Block(block));
+            }
+            ChainEvent::NewHeader(_) => {}
+        }
+        ()
+    }
+}
+
 impl Handler<ServerEvent> for TcpServer {
     type Result = Result<PeerId, P2PError>;
-    fn handle(&mut self, msg: ServerEvent, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ServerEvent, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             ServerEvent::Connected(ref peer_id, ref bound_type, ref pid, ref raw_msg) => {
                 trace!("Connected peer: {:?}", peer_id);
@@ -254,7 +270,7 @@ impl TcpServer {
     }
 
     // TODO
-    fn drop_peer(&mut self, remote_id: PeerId, remote_addresses: Vec<Multiaddr>) {}
+    fn drop_peer(&mut self, _remote_id: PeerId, _remote_addresses: Vec<Multiaddr>) {}
 
     fn handle_network_message(&mut self, msg: RawMessage) -> Result<(), P2PError> {
         let header = msg.header();
@@ -311,7 +327,7 @@ struct TcpConnectOutBound(TcpStream, PeerId);
 impl Handler<TcpConnectOutBound> for TcpServer {
     type Result = ();
 
-    fn handle(&mut self, msg: TcpConnectOutBound, ctx: &mut Context<Self>) {
+    fn handle(&mut self, msg: TcpConnectOutBound, _ctx: &mut Context<Self>) {
         trace!("TcpServer receive tcp connect event, peerid: {:?}", msg.1);
         // For each incoming connection we create `session` actor with out chat server
         if self.peers.contains_key(&msg.1) {

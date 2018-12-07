@@ -37,7 +37,7 @@ impl HandleRoundChange for Core {
             view: View::new(current_view.height, round),
             digest: EMPTY_HASH,
         };
-        let mut msg = GossipMessage::new(MessageType::RoundChange, subject.into_bytes(), None);
+        let msg = GossipMessage::new(MessageType::RoundChange, subject.into_bytes(), None);
         self.broadcast(&msg);
     }
 
