@@ -151,6 +151,7 @@ impl Handler<BroadcastEvent> for TcpServer {
 
     /// handle p2p event
     fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) -> Self::Result {
+        debug!("TcpServer[e:BroadcastEvent]");
         match msg {
             BroadcastEvent::Consensus(msg) => {
                 let header = RawHeader::new(P2PMsgCode::Consensus, 10, chrono::Local::now().timestamp_millis() as u64);

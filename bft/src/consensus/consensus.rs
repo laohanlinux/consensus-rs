@@ -36,11 +36,23 @@ pub trait Engine {
     fn seal(&mut self, new_block: &mut Block, abort: Receiver<()>) -> EngineResult;
 }
 
-pub fn create_consensus_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber: Addr<BroadcastEventSubscriber>) -> Box<Engine> {
+pub type SafeEngine = Box<Engine + Send + Sync>;
+
+pub fn create_consensus_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber: Addr<BroadcastEventSubscriber>) -> SafeEngine {
     info!("Create bft consensus engine");
-    let backend = new_impl_backend(key_pair.clone(), chain.clone(), subscriber);
-    let core_backend: Box<Backend<ValidatorsType=ImplValidatorSet>> = Box::new(backend.clone());
-    let engine_backend: Box<Engine> = Box::new(backend.clone());
-    let _core_pid = Core::new(chain, core_backend, key_pair);
+    let mut backend = new_impl_backend(key_pair.clone(), chain.clone(), subscriber);
+
+    // use new thread to handle core
+    let core_backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync> = Box::new(backend.clone()) as Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>;
+    let (tx, rx) = ::std::sync::mpsc::channel();
+    ::std::thread::spawn(move||{
+        let sys = actix::System::new("core");
+        let core_pid = Core::new(chain, core_backend, key_pair);
+        tx.send(core_pid).unwrap();
+        sys.run();
+    });
+    let core_pid = rx.recv().unwrap();
+    backend.set_core_pid(core_pid);
+    let engine_backend: SafeEngine = Box::new(backend.clone()) as Box<Engine + Send + Sync>;
     engine_backend
 }

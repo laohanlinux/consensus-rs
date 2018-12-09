@@ -143,6 +143,7 @@ impl Ledger {
             if let Some(header) = self.header_cache.write().get(&block_hash) {
                 return Some(header.clone());
             }
+            info!("Block=> {:?}", block_hash);
             if let Some(block) = self.schema.blocks().get(&block_hash) {
                 // cache it
                 self.header_cache
@@ -215,12 +216,11 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use std::io::{self, Write};
 
     #[test]
     fn db() {
-        use std::env;
-
         let dir = env::temp_dir();
         let db = Database::open_default(dir.to_str().unwrap()).unwrap();
 
@@ -238,5 +238,12 @@ mod tests {
                 String::from_utf8_lossy(&kv.1)
             );
         });
+    }
+
+    #[test]
+    fn ledger() {
+        let dir = crate::common::random_dir();
+        let db = Database::open_default(&dir).unwrap();
+//        let mut ledger = Ledger::new();
     }
 }

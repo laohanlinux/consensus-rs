@@ -143,6 +143,7 @@ impl Backend for ImplBackend {
 
     /// TODO
     fn broadcast(&self, _vals: &ValidatorSet, msg: GossipMessage) -> Result<(), ()> {
+        debug!("Broadcast message, {:?}", msg.trace());
         self.broadcast_subscriber
             .do_send(BroadcastEvent::Consensus(msg));
         Ok(())
@@ -287,6 +288,7 @@ impl Engine for ImplBackend {
             panic!("Engine start only once");
         }
         self.started = true;
+        info!("Engine start successfully");
         Ok(())
     }
 
@@ -358,7 +360,7 @@ impl Engine for ImplBackend {
     }
 
     fn new_chain_header(&mut self, proposal: &Proposal) -> EngineResult {
-        trace!(
+        debug!(
             "Backend handle new chain header, hash: {:?}, height: {:?}",
             proposal.block().hash(),
             proposal.block().height()
@@ -367,24 +369,25 @@ impl Engine for ImplBackend {
             return Err(EngineError::EngineNotStarted);
         }
         // send a new round event
-        let core = self.core_pid.as_ref().unwrap();
-        let (tx, rx) = crossbeam_channel::bounded(1);
+        let core = self.core_pid.as_ref().unwrap().clone();
+        let proposal = proposal.clone();
+
         let request = core.send(NewHeaderEvent {
             proposal: proposal.clone(),
         });
         Arbiter::spawn(
             request
                 .and_then(move |result| {
-                    tx.send(result);
+                    info!("----->wait request response");
                     futures::future::ok(())
                 })
                 .map_err(|err| panic!(err)),
         );
-        rx.recv().unwrap();
         Ok(())
     }
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
+        info!("Prepare header, hash:{:?}, height:{:?}", header.hash(), header.height);
         let parent_header = {
             self.chain.get_header_by_height(header.height - 1)
                 .ok_or("not found parent block for the header".to_string())?
@@ -486,7 +489,7 @@ impl Engine for ImplBackend {
                         Err(err) => {
                             match err {
                                 RecvTimeoutError => {
-                                    break;
+                                    continue;
                                 }
                                 other => {
                                     return panic!(other);
@@ -518,6 +521,12 @@ impl Engine for ImplBackend {
             panic!(err)
         }));
         Ok(())
+    }
+}
+
+impl ImplBackend {
+    pub fn set_core_pid(&mut self, core_pid: Addr<Core>) {
+        self.core_pid = Some(core_pid);
     }
 }
 

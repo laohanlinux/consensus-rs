@@ -84,6 +84,7 @@ impl Handler<BroadcastEvent> for BroadcastEventSubscriber {
     type Result = ();
 
     fn handle(&mut self, msg: BroadcastEvent, ctx: &mut Self::Context) -> Self::Result {
+        debug!("BroadcastEventSubscriber[e:BroadcastEvent]");
         match self.subscriber_type {
             SubscriberType::Async => {
                 self.issue_async(msg);
@@ -100,5 +101,71 @@ impl BroadcastEventSubscriber {
         BroadcastEventSubscriber {
             subscriber_type: subscriber_type,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use actix_broker::BrokerSubscribe;
+
+    struct ProActor {
+        name: String,
+    }
+
+    impl Actor for ProActor {
+        type Context = Context<Self>;
+
+        fn started(&mut self, ctx: &mut Self::Context) {
+            self.subscribe_async::<BroadcastEvent>(ctx);
+        }
+    }
+
+    impl Handler<BroadcastEvent> for ProActor {
+        type Result = ();
+
+        fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) {
+            println!("ProActor[{}] Received: {:?}", self.name, msg);
+        }
+    }
+
+    struct SubActor {}
+
+    impl Actor for SubActor {
+        type Context = Context<Self>;
+
+        fn started(&mut self, ctx: &mut Self::Context) {}
+    }
+
+    impl Handler<BroadcastEvent> for SubActor {
+        type Result = ();
+
+        fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) {
+            println!("SubActor Received: {:?}", msg);
+            self.issue_async(msg);
+        }
+    }
+
+    #[test]
+    fn t_async_actor() {
+        use crate::protocol::{GossipMessage, MessageType};
+        crate::logger::init_test_env_log();
+        let pro = ProActor { name: "A".to_owned() }.start();
+
+        ::std::thread::spawn(move || {
+            System::run(move || {
+                let pro = ProActor { name: "B".to_owned() }.start();
+            });
+        });
+        let sub = BroadcastEventSubscriber { subscriber_type: SubscriberType::Async }.start();
+
+        ::std::thread::spawn(move || {
+            while true {
+                sub.do_send(BroadcastEvent::Consensus(GossipMessage::new(MessageType::RoundChange, vec![], None)));
+                ::std::thread::sleep(::std::time::Duration::from_secs(2));
+            }
+        });
+
+        crate::pprof::spawn_signal_handler(*crate::common::random_dir());
     }
 }

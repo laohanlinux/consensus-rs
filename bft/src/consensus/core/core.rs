@@ -78,6 +78,7 @@ impl Handler<NewHeaderEvent> for Core {
     type Result = ();
 
     fn handle(&mut self, msg: NewHeaderEvent, _ctx: &mut Self::Context) -> Self::Result {
+        debug!("Receive a new header event");
         let proposal = msg.proposal.clone();
         self.start_new_zero_round();
         let result: ConsensusResult = <Core as HandlerRequst>::handle(self, &CSRequest::new(proposal));
@@ -118,6 +119,18 @@ impl Handler<TimerEvent> for Core {
     type Result = ();
 
     fn handle(&mut self, _msg: TimerEvent, _ctx: &mut Self::Context) -> Self::Result {
+        debug!("Receive timer event");
+        let last_proposal =  self.backend.last_proposal().unwrap();
+        let last_block = last_proposal.block();
+        let cur_view = self.current_view();
+        if last_block.height() >= cur_view.height {
+            info!("Round change timeout, catch up latest height");
+            self.stop_timer();
+            self.wait_round_change = false;
+        } else {
+            // send new round message
+            self.send_next_round_change();
+        }
         ()
     }
 }
@@ -133,7 +146,7 @@ impl Handler<OpCMD> for Core {
 }
 
 impl Core {
-    pub fn new(chain: Arc<Chain>, backend: Box<Backend<ValidatorsType=ImplValidatorSet>>, key_pair: KeyPair) -> Addr<Core> {
+    pub fn new(chain: Arc<Chain>, backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>, key_pair: KeyPair) -> Addr<Core> {
         let address = key_pair.address();
         let last_block = chain.get_last_block();
         let validators = chain.get_validators(last_block.height());
@@ -152,7 +165,6 @@ impl Core {
         let request_time = Duration::from_millis(chain.config.request_time.as_millis() as u64);
         let f_request_time = request_time.clone();
         let r_request_time = request_time.clone();
-        let _block_period = Duration::from_secs(chain.config.block_period.as_secs());
         let config = Config {
             request_time: chain.config.request_time.as_millis() as u64,
             block_period: chain.config.block_period.as_secs(),
@@ -162,7 +174,8 @@ impl Core {
         Core::create(move |ctx| {
             let core_pid = ctx.address().clone();
             let address = address.clone();
-            let (f_core_pid, r_core_pid, b_core_pid) = (core_pid.clone(), core_pid.clone(), core_pid.clone());
+            let (f_core_pid, r_core_pid) = (core_pid.clone(), core_pid.clone());
+            let b_core_pid = core_pid.clone();
             Core {
                 pid: ctx.address(),
                 config: config,
@@ -176,10 +189,10 @@ impl Core {
                 wait_round_change: false,
 
                 future_prepprepare_timer: Timer::create(move |_| {
-                    Timer::new("future".to_owned(), f_request_time, f_core_pid)
+                    Timer::new("future".to_owned(), f_request_time, f_core_pid, None)
                 }),
                 round_change_timer: Timer::create(move |_| {
-                    Timer::new("round change".to_owned(), r_request_time, r_core_pid)
+                    Timer::new("round change".to_owned(), r_request_time, r_core_pid, None)
                 }),
 
                 consensus_timestamp: Duration::from_secs(0),
@@ -309,7 +322,7 @@ impl Core {
     pub fn broadcast(&self, msg: &GossipMessage) {
         let mut copy_msg = msg.clone();
         self.finalize_message(&mut copy_msg).unwrap();
-        self.backend.broadcast(&self.validators,  copy_msg).unwrap();
+        self.backend.broadcast(&self.validators, copy_msg).unwrap();
     }
 
     // 启动新的轮次，触发的条件
@@ -525,15 +538,16 @@ impl Core {
                 "round change".to_string(),
                 Duration::from_millis(3 * 1000),
                 pid,
+                None,
             )
         })
     }
 
-    pub fn new_round_future_preprepare_timer(&mut self, duraton: Duration) {
+    pub fn new_round_future_preprepare_timer(&mut self, duraton: Duration, msg: GossipMessage) {
         trace!("stop future preprepare timer");
         self.stop_future_preprepare_timer();
         let pid = self.pid.clone();
         self.future_prepprepare_timer =
-            Timer::create(move |_| Timer::new("future preprepare".to_string(), duraton, pid));
+            Timer::create(move |_| Timer::new("future preprepare".to_string(), duraton, pid, Some(msg)));
     }
 }

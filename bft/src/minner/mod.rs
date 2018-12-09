@@ -18,9 +18,9 @@ use futures::sync::oneshot;
 use crate::{
     subscriber::events::ChainEvent,
     core::chain::Chain,
-    core::tx_pool::TxPool,
+    core::tx_pool::{TxPool, SafeTxPool},
     consensus::backend::Backend,
-    consensus::consensus::Engine,
+    consensus::consensus::{Engine, SafeEngine},
     types::Timestamp,
     types::block::{Block, Header},
     types::transaction::{Transaction, merkle_root_transactions},
@@ -30,7 +30,7 @@ pub struct Minner {
     minter: Address,
     key_pair: KeyPair,
     chain: Arc<Chain>,
-    txpool: Arc<RwLock<Box<TxPool>>>,
+    txpool: Arc<RwLock<SafeTxPool>>,
     engine: Box<Engine>,
     seal_tx: Sender<()>,
     seal_rx: Receiver<()>,
@@ -72,8 +72,8 @@ impl Minner {
     pub fn new(minter: Address,
                key_pair: KeyPair,
                chain: Arc<Chain>,
-               txpool: Arc<RwLock<Box<TxPool>>>,
-               engine: Box<Engine>,
+               txpool: Arc<RwLock<SafeTxPool>>,
+               engine: SafeEngine,
                tx: Sender<()>,
                rx: Receiver<()>) -> Self {
         Minner {
@@ -89,8 +89,14 @@ impl Minner {
     }
 
     fn mine(&mut self, abort: Receiver<()>) {
+        debug!("Ready to mine next block");
         let mut block = self.packet_next_block();
-        self.engine.seal(&mut block, abort);
+        match self.engine.seal(&mut block, abort) {
+            Ok(_) => {}
+            Err(err) => {
+                error!("Failed to seal consensus, err: {:?}", err);
+            }
+        }
     }
 
     fn packet_next_block(&self) -> Block {

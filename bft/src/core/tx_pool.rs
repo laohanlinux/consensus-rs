@@ -22,6 +22,8 @@ pub trait TxPool {
     fn remove_txs(&mut self, tx_hashes: Vec<&Hash>);
 }
 
+pub type SafeTxPool = Box<TxPool + Send + Sync>;
+
 pub struct BaseTxPool {
     pq: PriorityQueue<Hash, u64>,
     txs: Vec<BTreeMap<Hash, Transaction>>,

@@ -35,6 +35,7 @@ pub struct Header {
     pub extra: Option<Vec<u8>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub votes: Option<Votes>,
+    #[serde(skip_serializing, skip_deserializing)]
     hash_cache: Option<Hash>,
 }
 

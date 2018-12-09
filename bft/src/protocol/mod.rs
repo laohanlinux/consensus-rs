@@ -128,6 +128,10 @@ impl GossipMessage {
         msg.signature = None;
         msg.into_bytes()
     }
+
+    pub(crate) fn trace(&self) -> String {
+        format!("code:{:?}, address:{:?}", self.code, self.address)
+    }
 }
 
 pub struct MessageManage<RHS = ImplValidatorSet>

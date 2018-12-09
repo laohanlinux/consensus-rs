@@ -1,3 +1,4 @@
+use std::time::Duration;
 use failure::Error;
 
 pub type ConsensusResult = Result<(), ConsensusError>;
