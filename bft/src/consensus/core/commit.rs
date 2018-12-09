@@ -64,26 +64,20 @@ impl HandleCommit for Core {
         let subject = Subject::from(msg.msg());
         let _current_subject = self.current_state.subject().unwrap();
         self.check_message(MessageType::Commit, &subject.view)?;
-        match msg.address() {
-            Ok(sender) => {
-                let subject = Subject::from_bytes(Cow::from(msg.msg()));
-                self.verify_commit(msg.commit_seal.as_ref(), &subject, sender, src.clone())?;
-                <Core as HandleCommit>::accept(self, msg, src)?;
+        let sender = msg.address;
+        let subject = Subject::from_bytes(Cow::from(msg.msg()));
+        self.verify_commit(msg.commit_seal.as_ref(), &subject, sender, src.clone())?;
+        <Core as HandleCommit>::accept(self, msg, src)?;
 
-                let val_set = self.val_set();
-                // receive more +2/3 votes
-                if self.current_state.commits.len() > val_set.two_thirds_majority()
-                    && self.state < State::Committed
-                {
-                    self.current_state.lock_hash();
-                    self.commit();
-                }
+        let val_set = self.val_set();
+        // receive more +2/3 votes
+        if self.current_state.commits.len() > val_set.two_thirds_majority()
+            && self.state < State::Committed
+            {
+                self.current_state.lock_hash();
+                self.commit();
             }
-            Err(reason) => {
-                return Err(ConsensusError::Unknown(reason));
-            }
-        }
-        unreachable!()
+        Ok(())
     }
 
     fn verify_commit(
@@ -107,11 +101,11 @@ impl HandleCommit for Core {
         let current_subject = current_state.subject().unwrap();
         if current_subject.digest != commit_subject.digest
             || current_subject.view != commit_subject.view
-        {
-            return Err(ConsensusError::Unknown(
-                "Inconsistent subjects between commit and proposal".to_string(),
-            ));
-        }
+            {
+                return Err(ConsensusError::Unknown(
+                    "Inconsistent subjects between commit and proposal".to_string(),
+                ));
+            }
         Ok(())
     }
 

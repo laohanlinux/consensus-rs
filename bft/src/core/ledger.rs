@@ -127,6 +127,8 @@ impl Ledger {
             if let Some(block) = self.block_cache.write().get(&hash) {
                 return Some(block.clone());
             }
+
+            println!("_____{:?}", hash);
             if let Some(block) = self.schema.blocks().get(&hash) {
                 // cache it
                 self.block_cache
@@ -143,6 +145,7 @@ impl Ledger {
             if let Some(header) = self.header_cache.write().get(&block_hash) {
                 return Some(header.clone());
             }
+            info!("Block=> {:?}", block_hash);
             if let Some(block) = self.schema.blocks().get(&block_hash) {
                 // cache it
                 self.header_cache
@@ -189,6 +192,7 @@ impl Ledger {
         self.block_cache
             .get_mut()
             .insert(hash, block.clone());
+        info!("🔨🔨🔨🔨🔨 Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash, header.height, header.time, header.proposer);
     }
 
     pub fn add_validators(&mut self, validators: Vec<Validator>) {
@@ -200,9 +204,9 @@ impl Ledger {
     }
 
     pub fn load_genesis(&mut self) {
-        if self.genesis.is_some() {
-            return;
-        }
+//        if self.genesis.is_some() {
+//            return;
+//        }
         let block = self.get_block_by_height(0).unwrap();
         self.genesis = Some(block);
     }
@@ -215,12 +219,11 @@ impl Ledger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use std::io::{self, Write};
 
     #[test]
     fn db() {
-        use std::env;
-
         let dir = env::temp_dir();
         let db = Database::open_default(dir.to_str().unwrap()).unwrap();
 
@@ -238,5 +241,12 @@ mod tests {
                 String::from_utf8_lossy(&kv.1)
             );
         });
+    }
+
+    #[test]
+    fn ledger() {
+        let dir = crate::common::random_dir();
+        let db = Database::open_default(&dir).unwrap();
+//        let mut ledger = Ledger::new();
     }
 }

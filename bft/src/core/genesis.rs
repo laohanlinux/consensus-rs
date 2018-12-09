@@ -12,6 +12,7 @@ use cryptocurrency_kit::crypto::EMPTY_HASH;
 use crate::{
     types::{Timestamp, Gas, Difficulty, Height, EMPTY_ADDRESS},
     types::block::{Block, Header},
+    types::votes::{decrypt_commit_bytes, encrypt_commit_bytes, Votes},
     types::{Validator, Validators},
     config::GenesisConfig,
     common,
@@ -46,13 +47,47 @@ pub(crate) fn store_genesis_block(genesis_config: &GenesisConfig, ledger: Arc<Rw
         }.map_err(|err: ParseError| err.to_string())?;
 
         let extra = genesis_config.extra.as_bytes().to_vec();
-        let header = Header::new(EMPTY_HASH, proposer, EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
-                                 0, 0, 0, genesis_config.gas_used + 10, genesis_config.gas_used,
-                                 epoch_time.timestamp() as Timestamp, None, Some(extra));
+        let mut header = Header::new(EMPTY_HASH, proposer, EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
+                                     0, 0, 0, genesis_config.gas_used + 10, genesis_config.gas_used,
+                                     epoch_time.timestamp() as Timestamp, None, Some(extra));
         let block = Block::new(header, vec![]);
         ledger.add_genesis_block(&block);
         ledger.load_genesis();
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::common::random_dir;
+    use cryptocurrency_kit::ethkey::{Generator, Random};
+    use kvdb_rocksdb::Database;
+    use crate::store::schema::Schema;
+    use crate::core::ledger::{Ledger, LastMeta};
+    use lru_time_cache::LruCache;
+
+    #[test]
+    fn t_genesis_block() {
+        let secret = Random.generate().unwrap();
+
+        let database = Database::open_default(&random_dir()).map_err(|err| err.to_string()).unwrap();
+        let schema = Schema::new(Arc::new(database));
+        let mut ledger = Ledger::new(
+            LastMeta::new_zero(),
+            LruCache::with_capacity(1 << 10),
+            LruCache::with_capacity(1 << 10),
+            vec![],
+            schema,
+        );
+
+        let mut header = Header::new(EMPTY_HASH, Address::from(10), EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
+                                     0, 0, 0, 10, 10,
+                                     192, None, Some(vec![12, 1]));
+        let block = Block::new(header, vec![]);
+
+        ledger.add_genesis_block(&block);
+        ledger.load_genesis();
+    }
 }

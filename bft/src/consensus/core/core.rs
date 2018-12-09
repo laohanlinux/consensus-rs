@@ -6,6 +6,7 @@ use cryptocurrency_kit::ethkey::{KeyPair, Signature};
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
+use futures::Future;
 
 use std::any::{Any, TypeId};
 use std::borrow::Borrow;
@@ -14,6 +15,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::io::Cursor;
 use std::time::Duration;
+use std::time::Instant;
 use std::sync::Arc;
 
 use super::{
@@ -36,13 +38,42 @@ use crate::{
     consensus::events::{OpCMD, MessageEvent, NewHeaderEvent, FinalCommittedEvent, BackLogEvent, TimerEvent},
     consensus::types::{Proposal, Request as CSRequest, Round, Subject, View},
     consensus::validator::{ImplValidatorSet, ValidatorSet, Validators},
+    p2p::server::handle_msg_fn,
+    p2p::protocol::{RawMessage, P2PMsgCode, Payload},
     protocol::{GossipMessage, MessageType, State},
     types::Validator,
+    types::block::Block,
 };
+
+pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(RawMessage) -> Result<(), String> {
+    move |msg: RawMessage| {
+        let header = msg.header();
+        let payload = msg.payload().to_vec();
+        match header.code {
+            P2PMsgCode::Consensus => {
+                let request = core_pid.send(MessageEvent { payload: payload });
+                Arbiter::spawn(request.and_then(|result| {
+                    if let Err(err) = result {
+                        error!("Failed to handle message, err:{:?}", err);
+                    }
+                    futures::future::ok(())
+                }).map_err(|err| panic!(err)));
+            }
+            P2PMsgCode::Block => {
+                let block = Block::from_bytes(Cow::from(&payload));
+                chain.insert_block(&block);
+            }
+            _ => unimplemented!()
+        }
+
+        Ok(())
+    }
+}
+
 
 pub struct Core {
     pid: Addr<Core>,
-    config: Config,
+    pub config: Config,
 
     address: Address,
     pub keypair: KeyPair,
@@ -60,6 +91,7 @@ pub struct Core {
 
     backlogStore: Addr<BackLogActor>,
     pub backend: Box<Backend<ValidatorsType=ImplValidatorSet>>,
+    pub round_change_limiter: Instant,
 }
 
 impl Actor for Core {
@@ -78,6 +110,7 @@ impl Handler<NewHeaderEvent> for Core {
     type Result = ();
 
     fn handle(&mut self, msg: NewHeaderEvent, _ctx: &mut Self::Context) -> Self::Result {
+        debug!("Receive a new header event");
         let proposal = msg.proposal.clone();
         self.start_new_zero_round();
         let result: ConsensusResult = <Core as HandlerRequst>::handle(self, &CSRequest::new(proposal));
@@ -109,7 +142,7 @@ impl Handler<BackLogEvent> for Core {
 
     fn handle(&mut self, msg: BackLogEvent, _ctx: &mut Self::Context) -> Self::Result {
         let msg = msg.msg;
-        let src = Validator::new(msg.address().unwrap());
+        let src = Validator::new(msg.address);
         self.handle_check_message(&msg, &src)
     }
 }
@@ -118,6 +151,18 @@ impl Handler<TimerEvent> for Core {
     type Result = ();
 
     fn handle(&mut self, _msg: TimerEvent, _ctx: &mut Self::Context) -> Self::Result {
+        debug!("Receive timer event");
+        let last_proposal = self.backend.last_proposal().unwrap();
+        let last_block = last_proposal.block();
+        let cur_view = self.current_view();
+        if last_block.height() >= cur_view.height {
+            info!("Round change timeout, catch up latest height");
+            self.stop_timer();
+            self.wait_round_change = false;
+        } else {
+            // send new round message
+            self.send_next_round_change();
+        }
         ()
     }
 }
@@ -133,7 +178,7 @@ impl Handler<OpCMD> for Core {
 }
 
 impl Core {
-    pub fn new(chain: Arc<Chain>, backend: Box<Backend<ValidatorsType=ImplValidatorSet>>, key_pair: KeyPair) -> Addr<Core> {
+    pub fn new(chain: Arc<Chain>, backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>, key_pair: KeyPair) -> Addr<Core> {
         let address = key_pair.address();
         let last_block = chain.get_last_block();
         let validators = chain.get_validators(last_block.height());
@@ -152,7 +197,6 @@ impl Core {
         let request_time = Duration::from_millis(chain.config.request_time.as_millis() as u64);
         let f_request_time = request_time.clone();
         let r_request_time = request_time.clone();
-        let _block_period = Duration::from_secs(chain.config.block_period.as_secs());
         let config = Config {
             request_time: chain.config.request_time.as_millis() as u64,
             block_period: chain.config.block_period.as_secs(),
@@ -162,7 +206,8 @@ impl Core {
         Core::create(move |ctx| {
             let core_pid = ctx.address().clone();
             let address = address.clone();
-            let (f_core_pid, r_core_pid, b_core_pid) = (core_pid.clone(), core_pid.clone(), core_pid.clone());
+            let (f_core_pid, r_core_pid) = (core_pid.clone(), core_pid.clone());
+            let b_core_pid = core_pid.clone();
             Core {
                 pid: ctx.address(),
                 config: config,
@@ -176,10 +221,10 @@ impl Core {
                 wait_round_change: false,
 
                 future_prepprepare_timer: Timer::create(move |_| {
-                    Timer::new("future".to_owned(), f_request_time, f_core_pid)
+                    Timer::new("future".to_owned(), f_request_time, f_core_pid, None)
                 }),
                 round_change_timer: Timer::create(move |_| {
-                    Timer::new("round change".to_owned(), r_request_time, r_core_pid)
+                    Timer::new("round change".to_owned(), r_request_time, r_core_pid, None)
                 }),
 
                 consensus_timestamp: Duration::from_secs(0),
@@ -189,15 +234,17 @@ impl Core {
                 backlogStore: BackLogActor::create(move |_| {
                     BackLogActor::new(b_core_pid)
                 }),
+
+                round_change_limiter: Instant::now(),
             }
         })
     }
 
     // p2p message
     fn handle_message(&mut self, payload: &[u8]) -> ConsensusResult {
-        use std::borrow::Cow;
-        let msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
+        let mut msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
         let address = msg.address().map_err(|err| ConsensusError::Unknown(err))?;
+        debug!("Message from {:?}", address);
         self.validators.get_by_address(address.clone()).ok_or(ConsensusError::UnauthorizedAddress)?;
         self.handle_check_message(&msg, &Validator::new(address))
     }
@@ -309,7 +356,7 @@ impl Core {
     pub fn broadcast(&self, msg: &GossipMessage) {
         let mut copy_msg = msg.clone();
         self.finalize_message(&mut copy_msg).unwrap();
-        self.backend.broadcast(&self.validators,  copy_msg).unwrap();
+        self.backend.broadcast(&self.validators, copy_msg).unwrap();
     }
 
     // 启动新的轮次，触发的条件
@@ -525,15 +572,16 @@ impl Core {
                 "round change".to_string(),
                 Duration::from_millis(3 * 1000),
                 pid,
+                None,
             )
         })
     }
 
-    pub fn new_round_future_preprepare_timer(&mut self, duraton: Duration) {
+    pub fn new_round_future_preprepare_timer(&mut self, duraton: Duration, msg: GossipMessage) {
         trace!("stop future preprepare timer");
         self.stop_future_preprepare_timer();
         let pid = self.pid.clone();
         self.future_prepprepare_timer =
-            Timer::create(move |_| Timer::new("future preprepare".to_string(), duraton, pid));
+            Timer::create(move |_| Timer::new("future preprepare".to_string(), duraton, pid, Some(msg)));
     }
 }

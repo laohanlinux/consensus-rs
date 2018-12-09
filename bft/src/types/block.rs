@@ -31,10 +31,11 @@ pub struct Header {
     pub gas_limit: Gas,
     pub gas_used: Gas,
     pub time: Timestamp,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub extra: Option<Vec<u8>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub votes: Option<Votes>,
+    #[serde(skip_serializing, skip_deserializing)]
     hash_cache: Option<Hash>,
 }
 

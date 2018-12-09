@@ -18,14 +18,16 @@ use parking_lot::RwLock;
 use crate::{
     common,
     config::Config,
-    consensus::consensus::{create_consensus_engine, Engine},
+    consensus::core::core::{Core, handle_msg_middle},
+    consensus::consensus::{create_consensus_engine, Engine, SafeEngine},
     core::chain::Chain,
     core::ledger::{LastMeta, Ledger},
-    core::tx_pool::{BaseTxPool, TxPool},
+    core::tx_pool::{BaseTxPool, TxPool, SafeTxPool},
     error::ChainResult,
     logger::init_log,
     minner::Minner,
     p2p::{
+        protocol::Payload,
         discover_service::DiscoverService,
         server::{author_handshake, TcpServer},
         spawn_sync_subscriber,
@@ -66,25 +68,28 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
 
     let broadcast_subscriber = BroadcastEventSubscriber::new(SubscriberType::Async).start();
 
-    let engine = start_consensus_engine(
+    let (core_pid, engine) = start_consensus_engine(
         &config,
         key_pair.clone(),
         chain.clone(),
         broadcast_subscriber.clone(),
     );
-    start_mint(&config, key_pair.clone(), chain.clone(), _tx_pool.clone(), engine);
-    info!("Start to minne");
 
-    let _: JoinHandle<Result<(), String>> = spawn(move || {
-        let system = System::new("bft-rs");
+    let config_clone = config.clone();
+    {
         let p2p_event_notify = init_p2p_event_notify();
-        let _discover_pid = init_p2p_service(p2p_event_notify.clone(), &config);
-        init_tcp_server(p2p_event_notify.clone(), genesis.hash(), &config);
+        let _discover_pid = init_p2p_service(p2p_event_notify.clone(), &config_clone);
+        init_tcp_server(chain.clone(), p2p_event_notify.clone(), genesis.hash(), core_pid.clone(), &config_clone);
         crate::util::TimerRuntime::new(Duration::from_secs(150));
-        system.run();
-        sender.send(()).unwrap();
-        Ok(())
+    }
+
+    // spawn new thread to handle mine
+    ::std::thread::spawn(move || {
+        System::run(move || {
+            start_mint(&config, key_pair.clone(), chain.clone(), _tx_pool.clone(), engine);
+        });
     });
+
     init_signal_handle();
     Ok(())
 }
@@ -106,11 +111,12 @@ fn init_p2p_service(
     discover_service
 }
 
-fn init_tcp_server(p2p_subscriber: Addr<ProcessSignals>, genesis: Hash, config: &Config) {
+fn init_tcp_server(chain: Arc<Chain>, p2p_subscriber: Addr<ProcessSignals>, genesis: Hash, core_pid: Addr<Core>, config: &Config) {
     let peer_id = PeerId::from_str(&config.peer_id).unwrap();
     let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
     let author = author_handshake(genesis.clone());
-    let server = TcpServer::new(peer_id, mul_addr, None, genesis.clone(), Box::new(author));
+    let h1 = Box::new(handle_msg_middle(core_pid, chain));
+    let server = TcpServer::new(peer_id, mul_addr, None, genesis.clone(), Box::new(author), h1);
 
     // subscriber p2p event, sync operation
     {
@@ -139,9 +145,9 @@ fn init_config(config: &str) -> Result<Config, String> {
         .map_err(|err| err.to_string())
 }
 
-fn init_transaction_pool(_: &Config) -> Box<TxPool> {
+fn init_transaction_pool(_: &Config) -> SafeTxPool {
     info!("Init transaction pool successfully");
-    Box::new(BaseTxPool::new())
+    Box::new(BaseTxPool::new()) as SafeTxPool
 }
 
 fn init_store(config: &Config) -> Result<Ledger, String> {
@@ -174,17 +180,19 @@ fn start_consensus_engine(
     key_pair: KeyPair,
     chain: Arc<Chain>,
     subscriber: Addr<BroadcastEventSubscriber>,
-) -> Box<Engine> {
+) -> (Addr<Core>, SafeEngine) {
     info!("Init consensus engine");
-    create_consensus_engine(key_pair, chain, subscriber)
+    let mut result = create_consensus_engine(key_pair, chain, subscriber);
+    result.1.start().unwrap();
+    result
 }
 
 fn start_mint(
     config: &Config,
     key_pair: KeyPair,
     chain: Arc<Chain>,
-    txpool: Arc<RwLock<Box<TxPool>>>,
-    engine: Box<Engine>,
+    txpool: Arc<RwLock<SafeTxPool>>,
+    engine: SafeEngine,
 ) -> Addr<Minner> {
     let minter = key_pair.address();
     Minner::create(move |ctx| {

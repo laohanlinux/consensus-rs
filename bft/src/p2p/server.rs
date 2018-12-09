@@ -22,7 +22,7 @@ use uuid::Uuid;
 use lru_time_cache::LruCache;
 
 use super::codec::MsgPacketCodec;
-use super::protocol::{BoundType, RawMessage, Header as RawHeader, P2PMsgCode, Handshake};
+use super::protocol::{BoundType, RawMessage, Header as RawHeader, P2PMsgCode, Payload, Handshake};
 use super::session::Session;
 use crate::{
     common::{multiaddr_to_ipv4, random_uuid},
@@ -40,6 +40,8 @@ lazy_static! {
 }
 
 pub type author_fn = Fn(Handshake) -> bool;
+pub type handle_msg_fn = Fn(RawMessage) -> Result<(), String>;
+
 pub type HandshakePacketFn = Fn() -> Handshake;
 
 pub fn author_handshake(genesis: Hash) -> impl Fn(Handshake) -> bool {
@@ -70,6 +72,7 @@ pub struct TcpServer {
     genesis: Hash,
     cache: LruCache<Hash, bool>,
     author_fn: Box<author_fn>,
+    handles: Box<handle_msg_fn>,
 }
 
 struct ConnectInfo {
@@ -151,6 +154,7 @@ impl Handler<BroadcastEvent> for TcpServer {
 
     /// handle p2p event
     fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) -> Self::Result {
+        debug!("TcpServer[e:BroadcastEvent]");
         match msg {
             BroadcastEvent::Consensus(msg) => {
                 let header = RawHeader::new(P2PMsgCode::Consensus, 10, chrono::Local::now().timestamp_millis() as u64);
@@ -196,8 +200,11 @@ impl Handler<ServerEvent> for TcpServer {
             // 接收端
             ServerEvent::Message(ref raw_msg) => {
                 let hash: Hash = raw_msg.hash();
-                self.cache.entry(hash).or_insert(true);
-                // TODO
+                if self.cache.get(&hash).is_some() {
+                    trace!("Skip message: {:?}", hash);
+                } else {
+                    (self.handles)(raw_msg.clone());
+                }
             }
         }
         Err(P2PError::InvalidMessage)
@@ -211,6 +218,7 @@ impl TcpServer {
         key: Option<secio::SecioKeyPair>,
         genesis: Hash,
         author: Box<Fn(Handshake) -> bool>,
+        handles: Box<Fn(RawMessage) -> Result<(), String>>,
     ) -> Addr<TcpServer> {
         let mut addr: String = String::new();
         mul_addr.iter().for_each(|item| match &item {
@@ -241,6 +249,7 @@ impl TcpServer {
                 cache: LruCache::with_expiry_duration_and_capacity(Duration::from_secs(5), 100_000),
                 genesis: genesis,
                 author_fn: author,
+                handles: handles,
             }
         })
     }
@@ -314,7 +323,8 @@ impl TcpServer {
     }
 
     fn broadcast(&self, msg: &RawMessage) {
-        for (_, info) in &self.peers {
+        for (peer, info) in &self.peers {
+            debug!("send a message to {:?}", peer);
             info.pid.do_send(msg.clone());
         }
     }

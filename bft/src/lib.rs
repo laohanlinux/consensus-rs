@@ -72,3 +72,4 @@ pub mod minner;
 pub mod cmd;
 pub mod config;
 pub mod logger;
+pub mod mocks;
