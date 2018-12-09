@@ -62,4 +62,13 @@ mod tests {
         println!("{:?}", PeerId::random());
         println!("{:?}", PeerId::from_str("QmbBr2fHwLFKvHkAq1BpbEr4dvR8P6orQxHkVaxeJsJiW8").unwrap());
     }
+
+    #[test]
+    fn t_load_secret(){
+        use cryptocurrency_kit::ethkey::{Secret, KeyPair};
+
+        let secret = Secret::from_str("7f3b0a324e13e5358c3fd686737acd7adf2e5556084ec6d9e48b497082b7ef98").unwrap();
+        let key_pair = KeyPair::from_secret(secret).unwrap();
+        println!("{:?}, {:?}", key_pair, key_pair.address());
+    }
 }

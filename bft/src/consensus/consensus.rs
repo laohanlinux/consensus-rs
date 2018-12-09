@@ -38,21 +38,21 @@ pub trait Engine {
 
 pub type SafeEngine = Box<Engine + Send + Sync>;
 
-pub fn create_consensus_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber: Addr<BroadcastEventSubscriber>) -> SafeEngine {
+pub fn create_consensus_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber: Addr<BroadcastEventSubscriber>) -> (Addr<Core>, SafeEngine) {
     info!("Create bft consensus engine");
     let mut backend = new_impl_backend(key_pair.clone(), chain.clone(), subscriber);
 
     // use new thread to handle core
     let core_backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync> = Box::new(backend.clone()) as Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>;
     let (tx, rx) = ::std::sync::mpsc::channel();
-    ::std::thread::spawn(move||{
+    ::std::thread::spawn(move || {
         let sys = actix::System::new("core");
         let core_pid = Core::new(chain, core_backend, key_pair);
         tx.send(core_pid).unwrap();
         sys.run();
     });
     let core_pid = rx.recv().unwrap();
-    backend.set_core_pid(core_pid);
-    let engine_backend: SafeEngine = Box::new(backend.clone()) as Box<Engine + Send + Sync>;
-    engine_backend
+    backend.set_core_pid(core_pid.clone());
+    let engine_backend: SafeEngine = Box::new(backend.clone()) as SafeEngine;
+    (core_pid, engine_backend)
 }

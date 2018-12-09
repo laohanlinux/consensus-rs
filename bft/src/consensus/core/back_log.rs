@@ -78,7 +78,7 @@ impl BackLogActor {
                 for (message, _) in value.iter_mut() {
                     let view;
                     match &message.code {
-                        MessageType::RoundChange => {
+                        MessageType::Preprepare => {
                             let preprepare: PrePrepare = PrePrepare::from_bytes(Cow::from(message.msg()));
                             view = preprepare.view;
                         }

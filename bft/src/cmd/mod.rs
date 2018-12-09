@@ -18,6 +18,7 @@ use parking_lot::RwLock;
 use crate::{
     common,
     config::Config,
+    consensus::core::core::{Core, handle_msg_middle},
     consensus::consensus::{create_consensus_engine, Engine, SafeEngine},
     core::chain::Chain,
     core::ledger::{LastMeta, Ledger},
@@ -26,6 +27,7 @@ use crate::{
     logger::init_log,
     minner::Minner,
     p2p::{
+        protocol::Payload,
         discover_service::DiscoverService,
         server::{author_handshake, TcpServer},
         spawn_sync_subscriber,
@@ -66,25 +68,23 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
 
     let broadcast_subscriber = BroadcastEventSubscriber::new(SubscriberType::Async).start();
 
-    let engine: SafeEngine = start_consensus_engine(
+    let (core_pid, engine) = start_consensus_engine(
         &config,
         key_pair.clone(),
         chain.clone(),
         broadcast_subscriber.clone(),
     );
 
-
     let config_clone = config.clone();
-
     {
         let p2p_event_notify = init_p2p_event_notify();
         let _discover_pid = init_p2p_service(p2p_event_notify.clone(), &config_clone);
-        init_tcp_server(p2p_event_notify.clone(), genesis.hash(), &config_clone);
+        init_tcp_server(chain.clone(), p2p_event_notify.clone(), genesis.hash(), core_pid.clone(), &config_clone);
         crate::util::TimerRuntime::new(Duration::from_secs(150));
     }
 
     // spawn new thread to handle mine
-    ::std::thread::spawn(move|| {
+    ::std::thread::spawn(move || {
         System::run(move || {
             start_mint(&config, key_pair.clone(), chain.clone(), _tx_pool.clone(), engine);
         });
@@ -111,11 +111,12 @@ fn init_p2p_service(
     discover_service
 }
 
-fn init_tcp_server(p2p_subscriber: Addr<ProcessSignals>, genesis: Hash, config: &Config) {
+fn init_tcp_server(chain: Arc<Chain>, p2p_subscriber: Addr<ProcessSignals>, genesis: Hash, core_pid: Addr<Core>, config: &Config) {
     let peer_id = PeerId::from_str(&config.peer_id).unwrap();
     let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
     let author = author_handshake(genesis.clone());
-    let server = TcpServer::new(peer_id, mul_addr, None, genesis.clone(), Box::new(author));
+    let h1 = Box::new(handle_msg_middle(core_pid, chain));
+    let server = TcpServer::new(peer_id, mul_addr, None, genesis.clone(), Box::new(author), h1);
 
     // subscriber p2p event, sync operation
     {
@@ -179,11 +180,11 @@ fn start_consensus_engine(
     key_pair: KeyPair,
     chain: Arc<Chain>,
     subscriber: Addr<BroadcastEventSubscriber>,
-) -> SafeEngine {
+) -> (Addr<Core>, SafeEngine) {
     info!("Init consensus engine");
-    let mut engine: SafeEngine = create_consensus_engine(key_pair, chain, subscriber);
-    engine.start();
-    engine
+    let mut result = create_consensus_engine(key_pair, chain, subscriber);
+    result.1.start().unwrap();
+    result
 }
 
 fn start_mint(

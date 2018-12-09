@@ -126,7 +126,9 @@ impl StreamHandler<RawMessage, io::Error> for Session {
             }
             P2PMsgCode::Transaction => {}
             P2PMsgCode::Block => {}
-            P2PMsgCode::Consensus => {}
+            P2PMsgCode::Consensus => {
+                self.server.do_send(ServerEvent::Message(msg));
+            }
             P2PMsgCode::Sync => {}
             _ => ctx.stop(),
         }

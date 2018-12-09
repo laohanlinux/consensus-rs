@@ -6,6 +6,7 @@ use cryptocurrency_kit::ethkey::{KeyPair, Signature};
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
+use futures::Future;
 
 use std::any::{Any, TypeId};
 use std::borrow::Borrow;
@@ -14,6 +15,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::io::Cursor;
 use std::time::Duration;
+use std::time::Instant;
 use std::sync::Arc;
 
 use super::{
@@ -36,13 +38,42 @@ use crate::{
     consensus::events::{OpCMD, MessageEvent, NewHeaderEvent, FinalCommittedEvent, BackLogEvent, TimerEvent},
     consensus::types::{Proposal, Request as CSRequest, Round, Subject, View},
     consensus::validator::{ImplValidatorSet, ValidatorSet, Validators},
+    p2p::server::handle_msg_fn,
+    p2p::protocol::{RawMessage, P2PMsgCode, Payload},
     protocol::{GossipMessage, MessageType, State},
     types::Validator,
+    types::block::Block,
 };
+
+pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(RawMessage) -> Result<(), String> {
+    move |msg: RawMessage| {
+        let header = msg.header();
+        let payload = msg.payload().to_vec();
+        match header.code {
+            P2PMsgCode::Consensus => {
+                let request = core_pid.send(MessageEvent { payload: payload });
+                Arbiter::spawn(request.and_then(|result| {
+                    if let Err(err) = result {
+                        error!("Failed to handle message, err:{:?}", err);
+                    }
+                    futures::future::ok(())
+                }).map_err(|err| panic!(err)));
+            }
+            P2PMsgCode::Block => {
+                let block = Block::from_bytes(Cow::from(&payload));
+                chain.insert_block(&block);
+            }
+            _ => unimplemented!()
+        }
+
+        Ok(())
+    }
+}
+
 
 pub struct Core {
     pid: Addr<Core>,
-    config: Config,
+    pub config: Config,
 
     address: Address,
     pub keypair: KeyPair,
@@ -60,6 +91,7 @@ pub struct Core {
 
     backlogStore: Addr<BackLogActor>,
     pub backend: Box<Backend<ValidatorsType=ImplValidatorSet>>,
+    pub round_change_limiter: Instant,
 }
 
 impl Actor for Core {
@@ -110,7 +142,7 @@ impl Handler<BackLogEvent> for Core {
 
     fn handle(&mut self, msg: BackLogEvent, _ctx: &mut Self::Context) -> Self::Result {
         let msg = msg.msg;
-        let src = Validator::new(msg.address().unwrap());
+        let src = Validator::new(msg.address);
         self.handle_check_message(&msg, &src)
     }
 }
@@ -120,7 +152,7 @@ impl Handler<TimerEvent> for Core {
 
     fn handle(&mut self, _msg: TimerEvent, _ctx: &mut Self::Context) -> Self::Result {
         debug!("Receive timer event");
-        let last_proposal =  self.backend.last_proposal().unwrap();
+        let last_proposal = self.backend.last_proposal().unwrap();
         let last_block = last_proposal.block();
         let cur_view = self.current_view();
         if last_block.height() >= cur_view.height {
@@ -202,15 +234,17 @@ impl Core {
                 backlogStore: BackLogActor::create(move |_| {
                     BackLogActor::new(b_core_pid)
                 }),
+
+                round_change_limiter: Instant::now(),
             }
         })
     }
 
     // p2p message
     fn handle_message(&mut self, payload: &[u8]) -> ConsensusResult {
-        use std::borrow::Cow;
-        let msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
+        let mut msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
         let address = msg.address().map_err(|err| ConsensusError::Unknown(err))?;
+        debug!("Message from {:?}", address);
         self.validators.get_by_address(address.clone()).ok_or(ConsensusError::UnauthorizedAddress)?;
         self.handle_check_message(&msg, &Validator::new(address))
     }

@@ -149,11 +149,11 @@ impl ValidatorSet for ImplValidatorSet {
     fn two_thirds_majority(&self) -> usize {
         let vals_size = self.validators.len() as f32;
         let ceil = vals_size * 2.0 / 3.0;
-        ceil.ceil() as usize
+        ceil.floor() as usize
     }
 
     fn has_two_thirds_majority(&self, n: usize) -> bool {
-        n >= self.two_thirds_majority()
+        n >= (self.two_thirds_majority() + 1)
     }
 }
 
@@ -298,7 +298,7 @@ mod tests {
                 Address::from(3),
             ];
             let val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
-            assert_eq!(val_set.two_thirds_majority(), 4);
+            assert_eq!(val_set.two_thirds_majority(), 3);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(3));
             writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority()).unwrap();
@@ -308,7 +308,7 @@ mod tests {
         {
             let address_list = vec![Address::from(100), Address::from(10), Address::from(3)];
             let val_set = ImplValidatorSet::new(&address_list, Box::new(fn_selector));
-            assert_eq!(val_set.two_thirds_majority(), 3);
+            assert_eq!(val_set.two_thirds_majority(), 2);
             assert!(val_set.has_two_thirds_majority(4));
             assert!(!val_set.has_two_thirds_majority(2));
             writeln!(io::stdout(), "+2/3=> {}", val_set.two_thirds_majority()).unwrap();

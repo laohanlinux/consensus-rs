@@ -2,6 +2,7 @@ use bigint::U256;
 use rand::random;
 use sha3::{Digest, Sha3_256};
 
+use core::str::FromStr;
 use std::env;
 use std::fmt::{self, Display};
 use std::net::{SocketAddr, AddrParseError};
@@ -101,16 +102,28 @@ pub fn string_to_address(s: &String) -> Result<Address, String> {
     }
 
     if s.len() == 42 {
-        return Ok(Address::from(s[2..].as_bytes()));
+        return Ok(Address::from_str(&s[2..]).unwrap());
     }
-    Ok(Address::from(s.as_bytes()))
+    Ok(Address::from_str(&s).unwrap())
 }
 
 pub fn strings_to_addresses(strs: &Vec<String>) -> Result<Vec<Address>, String> {
-    let mut addresses= Vec::new();
+    let mut addresses = Vec::new();
     for str in strs {
         let address = string_to_address(str)?;
         addresses.push(address);
     }
     Ok(addresses)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn t_string_to_address() {
+        let address = string_to_address(&"0x93908f59c6eff007d228398349214acb6b4ac9a4".to_owned()).unwrap();
+        assert_eq!("0x93908f59c6eff007d228398349214acb6b4ac9a4", format!("{:?}", address));
+        println!("address: {:?}", address);
+    }
 }
