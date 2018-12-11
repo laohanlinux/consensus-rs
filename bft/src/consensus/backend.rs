@@ -460,9 +460,8 @@ impl Engine for ImplBackend {
         };
 
         info!(
-            "Wait for the timestamp of header for ajustting the block period, delay: {}",
-            delay
-        );
+            "Wait for the timestamp of header for ajustting the block period, hash:{:?}, height:{:?}, delay: {}",
+            header.hash().short(), header.height, delay);
         ::std::thread::sleep(Duration::from_secs(delay));
 
         // add clear function

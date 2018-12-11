@@ -189,7 +189,7 @@ impl Ledger {
         self.block_cache
             .get_mut()
             .insert(hash, block.clone());
-        info!("🔨🔨🔨🔨🔨 Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash, header.height, header.time, header.proposer);
+        info!("🔨🔨🔨🔨🔨 Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, header.time, header.proposer);
     }
 
     pub fn add_validators(&mut self, validators: Vec<Validator>) {
@@ -201,9 +201,6 @@ impl Ledger {
     }
 
     pub fn load_genesis(&mut self) {
-//        if self.genesis.is_some() {
-//            return;
-//        }
         let block = self.get_block_by_height(0).unwrap();
         self.genesis = Some(block);
     }

@@ -5,6 +5,7 @@ use libp2p::PeerId;
 
 pub mod async_subscriber;
 pub mod events;
+pub mod cross_thread_events;
 
 use crate::types::block::{Block, Header};
 use super::*;
@@ -30,6 +31,16 @@ macro_rules! impl_subscribe_handler {
         pub enum SubscribeMessage {
             SubScribe(Recipient<$key>),
             UnSubScribe(Recipient<$key>),
+        }
+
+        impl SubscribeMessage {
+            pub fn new_subScribe(recipient: Recipient<$key>) -> Self {
+                SubscribeMessage::SubScribe(recipient)
+            }
+
+            pub fn new_unsubScribe(recipient: Recipient<$key>) -> Self {
+                SubscribeMessage::UnSubScribe(recipient)
+            }
         }
 
         #[derive(Clone)]
@@ -66,6 +77,10 @@ macro_rules! impl_subscribe_handler {
         }
 
         impl ProcessSignals {
+            pub fn new() -> Self {
+                ProcessSignals {subscribers: vec![]}
+            }
+
             pub fn subscribe(&mut self, recipient: Recipient<$key>) {
                 self.subscribers.push(recipient);
             }
