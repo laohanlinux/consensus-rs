@@ -19,7 +19,7 @@ use crate::{
     common,
     config::Config,
     consensus::core::core::{Core, handle_msg_middle},
-    consensus::consensus::{create_consensus_engine, Engine, SafeEngine},
+    consensus::consensus::{create_consensus_engine, SafeEngine},
     core::chain::Chain,
     core::ledger::{LastMeta, Ledger},
     core::tx_pool::{BaseTxPool, TxPool, SafeTxPool},

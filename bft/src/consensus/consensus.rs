@@ -17,6 +17,7 @@ use crate::{
     subscriber::events::{BroadcastEvent, BroadcastEventSubscriber},
     types::block::{Block, Header},
     core::chain::Chain,
+    consensus::events::OpCMD,
 };
 
 struct BftConfig {
@@ -29,7 +30,7 @@ pub trait Engine {
     fn stop(&mut self) -> Result<(), String>;
     fn author(&self, header: &Header) -> Result<Address, String>;
     fn verify_header(&self, header: &Header, seal: bool) -> EngineResult;
-    fn verify_seal(&self, header: &Header) -> Result<(), String>;
+    fn verify_seal(&self, header: &Header) -> EngineResult;
     fn new_chain_header(&mut self, proposal: &Proposal) -> EngineResult;
     fn prepare(&mut self, header: &mut Header) -> Result<(), String>;
     fn finalize(&mut self, header: &Header) -> Result<(), String>;
@@ -43,15 +44,17 @@ pub fn create_consensus_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber:
     let mut backend = new_impl_backend(key_pair.clone(), chain.clone(), subscriber);
 
     // use new thread to handle core
-    let core_backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync> = Box::new(backend.clone()) as Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>;
     let (tx, rx) = ::std::sync::mpsc::channel();
+    let core_backend = backend.clone();
     ::std::thread::spawn(move || {
-        let sys = actix::System::new("core");
-        let core_pid = Core::new(chain, core_backend, key_pair);
-        tx.send(core_pid).unwrap();
-        sys.run();
+        actix::System::run(move || {
+            let core_pid = Core::new(chain, core_backend, key_pair);
+            tx.send(core_pid).unwrap();
+        });
     });
     let core_pid = rx.recv().unwrap();
+    core_pid.do_send(OpCMD::Ping);
+
     backend.set_core_pid(core_pid.clone());
     let engine_backend: SafeEngine = Box::new(backend.clone()) as SafeEngine;
     (core_pid, engine_backend)

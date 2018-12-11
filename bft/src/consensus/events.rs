@@ -15,6 +15,7 @@ use super::{
 #[derive(Debug, Message)]
 pub enum OpCMD {
     stop,
+    Ping,
 }
 
 #[derive(Debug)]
@@ -59,7 +60,6 @@ pub struct BackLogEvent {
 impl Message for BackLogEvent {
     type Result = ConsensusResult;
 }
-
 
 #[derive(Debug, Message)]
 pub enum ConsensusEvent {

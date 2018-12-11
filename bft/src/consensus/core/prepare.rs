@@ -18,18 +18,21 @@ use super::{
 };
 
 pub trait HandlePrepare {
-    fn send_prepare(&self);
+    fn send_prepare(&mut self);
     fn verify_prepare(&mut self, prepare: &Subject, src: &Validator) -> ConsensusResult;
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult;
     fn accept(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult;
 }
 
 impl HandlePrepare for Core {
-    fn send_prepare(&self) {
+    fn send_prepare(&mut self) {
         let current_view = self.current_view();
+        let subject = self.current_state.subject().as_ref().cloned().unwrap();
+        let payload = subject.into_bytes();
+
         self.broadcast(&GossipMessage::new(
             MessageType::Prepare,
-            current_view.into_bytes(),
+            payload,
             None,
         ));
     }

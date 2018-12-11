@@ -21,13 +21,13 @@ use super::{
 };
 
 pub trait HandlePreprepare {
-    fn send_preprepare(&self, requst: &Request<Proposal>);
+    fn send_preprepare(&mut self, requst: &Request<Proposal>);
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError>;
     fn accetp(&mut self, preprepare: &PrePrepare);
 }
 
 impl HandlePreprepare for Core {
-    fn send_preprepare(&self, request: &Request<Proposal>) {
+    fn send_preprepare(&mut self, request: &Request<Proposal>) {
         //TODO add lock hash prove
         if self.current_state.height() == request.proposal().block().height() && self.is_proposer()
             {

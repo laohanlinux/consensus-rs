@@ -1,6 +1,10 @@
 use std::time::Duration;
 use failure::Error;
 
+use cryptocurrency_kit::crypto::Hash;
+
+use crate::types::Height;
+
 pub type ConsensusResult = Result<(), ConsensusError>;
 pub type EngineResult = Result<(), EngineError>;
 
@@ -31,7 +35,7 @@ pub enum ConsensusError {
     #[fail(display = "An unknown error has occurred, ({})", _0)]
     Unknown(String),
     #[fail(display = "engine error hash occurred, ({})", _0)]
-    Engine(EngineError)
+    Engine(EngineError),
 }
 
 #[derive(Debug, Fail)]
@@ -46,8 +50,8 @@ pub enum EngineError {
     InvalidHeight,
     #[fail(display = "Invalid timestamp")]
     InvalidTimestamp,
-    #[fail(display = "Invalid transaction hash")]
-    InvalidTransactionHash,
+    #[fail(display = "Invalid transaction hash, expect: {:?}, got: {:?}", _0, _1)]
+    InvalidTransactionHash(Hash, Hash),
     #[fail(display = "Unauthorized")]
     Unauthorized,
     #[fail(display = "Lack votes, expect: {}, got: {}", _0, _1)]
@@ -56,8 +60,8 @@ pub enum EngineError {
     FutureBlock,
     #[fail(display = "Invalid block number")]
     InvalidBlock,
-    #[fail(display = "Unknown ancestor")]
-    UnknownAncestor,
+    #[fail(display = "Unknown ancestor, child:{:?}, parent: {:?}", _0, _1)]
+    UnknownAncestor(Height, Height),
     #[fail(display = "Consensus interrupt")]
     Interrupt,
     #[fail(display = "An unknown error has occurred, ({})", _0)]

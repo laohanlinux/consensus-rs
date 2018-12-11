@@ -8,13 +8,11 @@ use std::time::Duration;
 use ::actix::prelude::*;
 use cryptocurrency_kit::storage::values::StorageValue;
 use futures::stream::once;
-use futures::Future;
-use futures::Stream;
 use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
 use cryptocurrency_kit::crypto::Hash;
-use tokio::{codec::FramedRead, io::AsyncRead, io::WriteHalf, net::TcpListener, net::TcpStream};
+use tokio::{codec::FramedRead, io::WriteHalf, net::TcpListener, net::TcpStream};
 
 use super::codec::MsgPacketCodec;
 use super::protocol::{BoundType, RawMessage, Header, P2PMsgCode, Handshake};

@@ -4,6 +4,7 @@ use cryptocurrency_kit::ethkey::{
     Address, KeyPair, Message as sMessage, Public, Secret, Signature,
 };
 use cryptocurrency_kit::storage::values::StorageValue;
+use chrono::Local;
 // enc,dec
 use rmps::decode::Error;
 use rmps::{Deserializer, Serializer};
@@ -45,6 +46,7 @@ pub enum MessageType {
 #[derive(Debug, Clone, Message, Deserialize, Serialize)]
 pub struct GossipMessage {
     pub code: MessageType,
+    pub create_time: u64,
     pub msg: Vec<u8>,
     #[serde(default)]
     pub signature: Option<Signature>,
@@ -78,6 +80,7 @@ impl GossipMessage {
     pub fn new(code: MessageType, msg: Vec<u8>, commit_seal: Option<Signature>) -> Self {
         GossipMessage {
             code,
+            create_time: 0,
             msg,
             signature: None,
             commit_seal,

@@ -25,12 +25,14 @@ pub trait HandleRoundChange {
 impl HandleRoundChange for Core {
     fn send_next_round_change(&mut self) {
         let current_view = self.current_view();
+        self.round_change_set.print_info();
         self.send_round_change(current_view.round + 1);
     }
 
     fn send_round_change(&mut self, round: Round) {
-        if Instant::now().duration_since(self.round_change_limiter) <= Duration::from_millis(self.config.request_time){
+        if Instant::now().duration_since(self.round_change_limiter) <= Duration::from_millis(self.config.request_time) {
             debug!("Skip round change sent");
+            self.new_round_change_timer();
             return;
         }
         self.round_change_limiter = Instant::now();
@@ -45,12 +47,13 @@ impl HandleRoundChange for Core {
             view: View::new(current_view.height, round),
             digest: EMPTY_HASH,
         };
-        let msg = GossipMessage::new(MessageType::RoundChange, subject.into_bytes(), None);
+        let mut msg = GossipMessage::new(MessageType::RoundChange, subject.into_bytes(), None);
+        msg.create_time = chrono::Local::now().timestamp_millis() as u64;
         self.broadcast(&msg);
     }
 
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
-        debug!("Handle round change message");
+        debug!("[{:?}]Handle round change message from {:?}, {}", self.address(), src.address(), self.address() == *src.address());
         let subject: Subject = Subject::from_bytes(Cow::from(msg.msg()));
         self.check_message(MessageType::RoundChange, &subject.view)?;
         let current_view = self.current_view();
@@ -60,22 +63,21 @@ impl HandleRoundChange for Core {
             .round_change_set
             .add(subject.view.round, msg.clone())
             .map_err(|err| ConsensusError::Unknown(err))?;
+        info!("-------> {:?}", n);
 
         // check round change more detail
-        if self.wait_round_change && n == current_val_set.fault() && *src.address() != self.address()
-            {
-                // receive more than local round and F has vote it
-                if current_view.round < subject.view.round {
-                    self.send_round_change(subject.view.round);
-                }
-                return Ok(());
-            } else if n == current_val_set.two_thirds_majority() + 1
-            && (self.wait_round_change && current_view.round < subject.view.round)
-            {
-                // receive more than local round and +2/3 has vote it
-                self.start_new_round(subject.view.round, &vec![]);
-                return Ok(());
-            } else if self.wait_round_change && current_view.round < subject.view.round {
+        if self.wait_round_change && n == current_val_set.fault() {
+            // receive more than local round and F has vote it
+            if current_view.round < subject.view.round {
+                self.send_round_change(subject.view.round);
+            }
+            return Ok(());
+        } else if n == current_val_set.two_thirds_majority() + 1
+            && (self.wait_round_change && current_view.round < subject.view.round) {
+            // receive more than local round and +2/3 has vote it
+            self.start_new_round(subject.view.round, &vec![]);
+            return Ok(());
+        } else if self.wait_round_change && current_view.round < subject.view.round {
             // receive more than local round
             return Err(ConsensusError::FutureRoundMessage);
         }

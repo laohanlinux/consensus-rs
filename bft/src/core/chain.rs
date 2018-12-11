@@ -33,10 +33,11 @@ impl Chain {
     }
 
     pub fn insert_block(&self, block: &Block) -> ChainResult {
+        info!("Ready insert a new block, hash: {}, height: {}", block.hash().short(), block.height());
         {
             let mut ledger = self.ledger.write();
-            if ledger.get_block_by_height(block.height()).is_some() {
-                trace!("{:?} has exists", block.hash());
+            if let Some(old_block) = ledger.get_block_by_height(block.height()) {
+                info!("{:#?}", old_block);
                 return Err(ChainError::Exists(block.hash()));
             }
             ledger.add_block(block);

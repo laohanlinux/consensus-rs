@@ -39,8 +39,8 @@ lazy_static! {
         { PeerId::from_str("QmX5e9hkQf7B45e2MZf38vhsC2wfA5aKQrrBuLujwaUBGw").unwrap() };
 }
 
-pub type author_fn = Fn(Handshake) -> bool;
-pub type handle_msg_fn = Fn(RawMessage) -> Result<(), String>;
+pub type AuthorFn = Fn(Handshake) -> bool;
+pub type HandleMsgFn = Fn(RawMessage) -> Result<(), String>;
 
 pub type HandshakePacketFn = Fn() -> Handshake;
 
@@ -71,8 +71,8 @@ pub struct TcpServer {
     peers: HashMap<PeerId, ConnectInfo>,
     genesis: Hash,
     cache: LruCache<Hash, bool>,
-    author_fn: Box<author_fn>,
-    handles: Box<handle_msg_fn>,
+    author_fn: Box<AuthorFn>,
+    handles: Box<HandleMsgFn>,
 }
 
 struct ConnectInfo {
@@ -280,18 +280,6 @@ impl TcpServer {
 
     // TODO
     fn drop_peer(&mut self, _remote_id: PeerId, _remote_addresses: Vec<Multiaddr>) {}
-
-    fn handle_network_message(&mut self, msg: RawMessage) -> Result<(), P2PError> {
-        let header = msg.header();
-        match header.code {
-            P2PMsgCode::Handshake => {
-                return Err(P2PError::InvalidMessage);
-            }
-            _ => unimplemented!(),
-        }
-
-        Ok(())
-    }
 
     fn handle_handshake(
         &mut self,
