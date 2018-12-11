@@ -32,13 +32,13 @@ use super::{
 use crate::{
     core::chain::Chain,
     consensus::validator::fn_selector,
-    consensus::backend::Backend,
+    consensus::backend::{Backend, ImplBackend},
     consensus::config::Config,
     consensus::error::{ConsensusError, ConsensusResult},
     consensus::events::{OpCMD, MessageEvent, NewHeaderEvent, FinalCommittedEvent, BackLogEvent, TimerEvent},
     consensus::types::{Proposal, Request as CSRequest, Round, Subject, View},
     consensus::validator::{ImplValidatorSet, ValidatorSet, Validators},
-    p2p::server::handle_msg_fn,
+    p2p::server::HandleMsgFn,
     p2p::protocol::{RawMessage, P2PMsgCode, Payload},
     protocol::{GossipMessage, MessageType, State},
     types::Validator,
@@ -61,6 +61,7 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
             }
             P2PMsgCode::Block => {
                 let block = Block::from_bytes(Cow::from(&payload));
+                info!("Receive a new block from network, hash: {:?}, height: {:?}", block.hash(), block.height());
                 chain.insert_block(&block);
             }
             _ => unimplemented!()
@@ -89,7 +90,7 @@ pub struct Core {
     round_change_timer: Addr<Timer>,
     pub consensus_timestamp: Duration,
 
-    backlogStore: Addr<BackLogActor>,
+    backlog_store: Addr<BackLogActor>,
     pub backend: Box<Backend<ValidatorsType=ImplValidatorSet>>,
     pub round_change_limiter: Instant,
 }
@@ -133,7 +134,11 @@ impl Handler<MessageEvent> for Core {
     type Result = ConsensusResult;
 
     fn handle(&mut self, msg: MessageEvent, _ctx: &mut Self::Context) -> Self::Result {
-        self.handle_message(&msg.payload)
+        let result = self.handle_message(&msg.payload);
+        if let Err(ref err) = result {
+            error!("Failed to handle message, err: {:?}", err);
+        }
+        result
     }
 }
 
@@ -170,15 +175,24 @@ impl Handler<TimerEvent> for Core {
 impl Handler<OpCMD> for Core {
     type Result = ();
 
-    fn handle(&mut self, _: OpCMD, ctx: &mut Self::Context) -> Self::Result {
-        self.stop_timer();
-        ctx.stop();
+    fn handle(&mut self, msg: OpCMD, ctx: &mut Self::Context) -> Self::Result {
+        match msg {
+            OpCMD::stop => {
+                self.stop_timer();
+                ctx.stop();
+            }
+            OpCMD::Ping => {
+                debug!("Recive a test message");
+            }
+        }
+
         ()
     }
 }
 
 impl Core {
-    pub fn new(chain: Arc<Chain>, backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>, key_pair: KeyPair) -> Addr<Core> {
+    pub fn new(chain: Arc<Chain>, backend: ImplBackend, key_pair: KeyPair) -> Addr<Core> {
+        //    let core_backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync> = Box::new(backend.clone()) as Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>;
         let address = key_pair.address();
         let last_block = chain.get_last_block();
         let validators = chain.get_validators(last_block.height());
@@ -208,6 +222,10 @@ impl Core {
             let address = address.clone();
             let (f_core_pid, r_core_pid) = (core_pid.clone(), core_pid.clone());
             let b_core_pid = core_pid.clone();
+            let mut backend = backend.clone();
+            backend.set_core_pid(ctx.address());
+            let core_backend: Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync> = Box::new(backend.clone()) as Box<Backend<ValidatorsType=ImplValidatorSet> + Send + Sync>;
+
             Core {
                 pid: ctx.address(),
                 config: config,
@@ -229,9 +247,9 @@ impl Core {
 
                 consensus_timestamp: Duration::from_secs(0),
 
-                backend: backend,
+                backend: core_backend,
 
-                backlogStore: BackLogActor::create(move |_| {
+                backlog_store: BackLogActor::create(move |_| {
                     BackLogActor::new(b_core_pid)
                 }),
 
@@ -244,7 +262,7 @@ impl Core {
     fn handle_message(&mut self, payload: &[u8]) -> ConsensusResult {
         let mut msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
         let address = msg.address().map_err(|err| ConsensusError::Unknown(err))?;
-        debug!("Message from {:?}", address);
+        debug!("Message from {}", msg.trace());
         self.validators.get_by_address(address.clone()).ok_or(ConsensusError::UnauthorizedAddress)?;
         self.handle_check_message(&msg, &Validator::new(address))
     }
@@ -279,7 +297,7 @@ impl Core {
         if let Err(ref err) = result {
             match err {
                 ConsensusError::FutureMessage | ConsensusError::FutureRoundMessage => {
-                    self.backlogStore.do_send(msg.clone());
+                    self.backlog_store.do_send(msg.clone());
                 }
                 _ => {}
             }
@@ -335,11 +353,11 @@ impl Core {
         assert!(has_more_than_maj23);
         // TODO commit
         let mut proposal = self.current_state.proposal().unwrap().clone();
-        let result = self.backend.commit(&mut proposal, committed_seals);
-        if result.is_ok() {
-            return;
+        if let Err(err) = self.backend.commit(&mut proposal, committed_seals) {
+            error!("Failed to commit block");
         }
-        trace!(
+
+        debug!(
             "commit proposal, hash:{}, height:{}",
             proposal.block().hash().short(),
             proposal.block().height()
@@ -353,15 +371,16 @@ impl Core {
         Ok(())
     }
 
-    pub fn broadcast(&self, msg: &GossipMessage) {
+    pub fn broadcast(&mut self, msg: &GossipMessage) {
         let mut copy_msg = msg.clone();
         self.finalize_message(&mut copy_msg).unwrap();
-        self.backend.broadcast(&self.validators, copy_msg).unwrap();
+        if let Err(err) = self.backend.gossip(&self.validators, copy_msg) {
+            error!("Failed to gossip message, err: {:?}", err);
+        }
     }
 
     // 启动新的轮次，触发的条件
     // 1：新高度初始化
-    // 2：锁定+2/3的 round change 票
     pub(crate) fn start_new_zero_round(&mut self) {
         trace!("before start zero round");
         let last_proposal = self.backend.last_proposal().unwrap();
@@ -394,6 +413,7 @@ impl Core {
     }
 
     // has receive +2/3 round change
+    // 锁定+2/3的 round change 票
     pub(crate) fn start_new_round(&mut self, round: Round, _pre_change_prove: &[u8]) {
         trace!("before start new round");
         assert_ne!(
@@ -419,8 +439,6 @@ impl Core {
         }
         // last_height + 1 = current_state.height
 
-        trace!("ready to update round, because round change");
-        let new_view = View::new(self.current_state.height(), self.current_state.round());
 
         assert_ne!(
             self.validators.size(),
@@ -428,9 +446,12 @@ impl Core {
             "validators'size should be more than zero"
         );
 
+        // TODO may try to chgeck
         // start new round timer
-        self.round_change_set
-            .max_round(self.validators.two_thirds_majority() + 1);
+        //        let round = self.round_change_set
+        //        .max_round(self.validators.two_thirds_majority() + 1).unwrap();
+        trace!("ready to update round, because round change");
+        let new_view = View::new(self.current_state.height(), round);
 
         // TODO 继承上一次的Round change prove
         // round change
@@ -459,7 +480,8 @@ impl Core {
                 // TODO
             } else {
                 // TODO
-                self.send_preprepare(self.current_state.pending_request.as_ref().unwrap());
+                let proposal = self.current_state.pending_request.as_ref().unwrap();
+                self.send_preprepare(&CSRequest::new(proposal.proposal.clone()));
             }
         }
 

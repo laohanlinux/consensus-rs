@@ -121,6 +121,7 @@ mod tests {
             iter.for_each(|hash| {
                 writeln!(io::stdout(), "{}", hash.short()).unwrap();
             });
+            writeln!(io::stdout(), "-->{:?}", ledger.get(1).unwrap()).unwrap();
         }
 
         // transaction

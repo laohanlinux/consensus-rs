@@ -1,21 +1,23 @@
+use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ::actix::prelude::*;
+use actix::{Addr, Arbiter};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use chrono::Local;
 use chrono_humanize::HumanTime;
-use crossbeam::crossbeam_channel::{self, Receiver, Sender, RecvTimeoutError, TryRecvError};
+use crossbeam::crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use crossbeam::scope;
 use cryptocurrency_kit::common::to_keccak;
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH, HASH_SIZE};
-use cryptocurrency_kit::ethkey::keccak::Keccak256;
+use cryptocurrency_kit::storage::values::StorageValue;
+use cryptocurrency_kit::crypto::{CryptoHash, Hash, hash, EMPTY_HASH};
 use cryptocurrency_kit::ethkey::{
+    keccak::Keccak256,
     sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
 };
+use futures::future::Err;
 use futures::sync::oneshot;
 use futures::Future;
-use futures::future::Err;
 use futures::*;
 use lru_time_cache::LruCache;
 use parking_lot::RwLock;
@@ -26,14 +28,14 @@ use super::{
     consensus::Engine,
     core::core::Core,
     error::{EngineError, EngineResult},
-    events::{FinalCommittedEvent, NewHeaderEvent, OpCMD},
+    events::{MessageEvent, FinalCommittedEvent, NewHeaderEvent, OpCMD},
     types::Proposal,
     validator::{fn_selector, ImplValidatorSet, ValidatorSet},
 };
 use crate::{
-    error::{ChainError, ChainResult},
     common::merkle_tree_root,
     core::chain::Chain,
+    error::{ChainError, ChainResult},
     protocol::GossipMessage,
     subscriber::events::{BroadcastEvent, BroadcastEventSubscriber},
     types::block::{Block, Header},
@@ -46,12 +48,8 @@ pub trait Backend {
     fn address(&self) -> Address;
     /// validators returns a set of current validator
     fn validators(&self, height: Height) -> &Self::ValidatorsType;
-    ///TODO
-    fn event_mux(&self);
-    /// broadcast sends a message to all validators (include itself)
-    fn broadcast(&self, vals: &ValidatorSet, msg: GossipMessage) -> Result<(), ()>;
     /// gossip sends a message to all validators (exclude self)
-    fn gossip(&self, vals: &ValidatorSet, payload: &[u8]) -> Result<(), ()>;
+    fn gossip(&mut self, vals: &ValidatorSet, msg: GossipMessage) -> EngineResult;
     /// commit a proposal with seals
     fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String>;
     /// verifies the proposal. If a err_future_block error is returned,
@@ -117,8 +115,8 @@ pub struct ImplBackend {
     validaor: Validator,
     validator_set: ImplValidatorSet,
     key_pair: KeyPair,
-    inbound_cache: LruCache<Hash, String>,
-    outbound_cache: LruCache<Hash, String>,
+    inbound_cache: LruCache<Hash, ()>,
+    outbound_cache: LruCache<Hash, ()>,
     proposed_block_hash: Hash,
     // proposal hash it from local node
     commit_tx: Sender<Block>,
@@ -139,19 +137,26 @@ impl Backend for ImplBackend {
     }
 
     /// TODO
-    fn event_mux(&self) {}
-
-    /// TODO
-    fn broadcast(&self, _vals: &ValidatorSet, msg: GossipMessage) -> Result<(), ()> {
+    fn gossip(&mut self, vals: &ValidatorSet, msg: GossipMessage) -> EngineResult {
+        let msg_hash = msg.hash();
+        if self.outbound_cache.get(&msg_hash).is_some() {
+            debug!("The message has sent");
+            return Ok(());
+        }
         debug!("Broadcast message, {:?}", msg.trace());
+
+        self.outbound_cache.insert(msg_hash, ());
+        let core_pid = self.core_pid.as_ref().ok_or(EngineError::EngineNotStarted)?;
+        Arbiter::spawn(core_pid.send(MessageEvent { payload: msg.clone().into_bytes() }).then(|result| {
+            if let Err(ref err) = result {
+                error!("Failed to send message");
+            }
+            info!("Success to send message");
+            future::ok::<(), ()>(())
+        }).map_err(|err| panic!(err)));
         self.broadcast_subscriber
             .do_send(BroadcastEvent::Consensus(msg));
         Ok(())
-    }
-
-    /// TODO
-    fn gossip(&self, _vals: &ValidatorSet, _payload: &[u8]) -> Result<(), ()> {
-        Err(())
     }
 
     /// TODO
@@ -166,10 +171,13 @@ impl Backend for ImplBackend {
         let mut block = proposal.block().clone();
         let votes = block.mut_votes();
         votes.unwrap().add_votes(&seals);
+        info!("9999999999999999999, {:?}, {}", block.hash(), block.height());
         let result = self.chain.insert_block(&block);
         if let Err(err) = result {
             match err {
-                ChainError::Exists(_) => {}
+                ChainError::Exists(block_hash) => {
+                    warn!("Block hash exists. hash: {:?}", block_hash);
+                }
                 other => {
                     error!(
                         "Failed to committed a new block, hash:{}, height:{}, proposer:{}",
@@ -210,10 +218,10 @@ impl Backend for ImplBackend {
                 }
             }
             let transaction_hash = merkle_tree_root(transactions);
-            if transaction_hash == header.tx_hash {
+            if transaction_hash != header.tx_hash {
                 return (
                     Duration::from_nanos(0),
-                    Err(EngineError::InvalidTransactionHash),
+                    Err(EngineError::InvalidTransactionHash(header.tx_hash.clone(), transaction_hash)),
                 );
             }
         }
@@ -309,23 +317,31 @@ impl Engine for ImplBackend {
         Ok(header.proposer.clone())
     }
 
-    fn verify_header(&self, header: &Header, _seal: bool) -> Result<(), EngineError> {
+    fn verify_header(&self, header: &Header, seal: bool) -> Result<(), EngineError> {
         if header.height == 0 {
             return Err(EngineError::InvalidHeight);
         }
         let parent_header = {
-            self.chain.get_header_by_height(header.height)
-                .ok_or(EngineError::UnknownAncestor)?
+            self.chain
+                .get_header_by_height(header.height - 1)
+                .ok_or(EngineError::UnknownAncestor(header.height, header.height - 1))?
         };
         if parent_header.hash() != header.prev_hash {
             return Err(EngineError::Unknown(
-                "parent hash != heaer.prev hash".to_string(),
+                format!("parent hash({:?}) != heaer.prev hash({:?})", parent_header.hash(), header.prev_hash),
             ));
         }
         if header.time < parent_header.time + self.config.block_period {
             return Err(EngineError::InvalidTimestamp);
         }
+        if seal {
+            self.verify_seal(header)?;
+        }
+        // FIXME add more check
+        Ok(())
+    }
 
+    fn verify_seal(&self, header: &Header) -> EngineResult {
         // check votes
         {
             let votes = header.votes.as_ref().ok_or(EngineError::LackVotes(
@@ -344,18 +360,10 @@ impl Engine for ImplBackend {
             }
         }
 
-        // FIXME add more check
-        Ok(())
-    }
-
-    fn verify_seal(&self, header: &Header) -> Result<(), String> {
-        if header.height == 0 {
-            return Err("unkown block".to_string());
-        }
         let proposer = header.proposer;
         self.validator_set
             .get_by_address(proposer)
-            .ok_or("proposer is not validators".to_string())
+            .ok_or(EngineError::Unknown("proposer is not validators".to_string()))
             .map(|_| ())
     }
 
@@ -387,9 +395,14 @@ impl Engine for ImplBackend {
     }
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
-        info!("Prepare header, hash:{:?}, height:{:?}", header.hash(), header.height);
+        info!(
+            "Prepare header, hash:{:?}, height:{:?}",
+            header.hash(),
+            header.height
+        );
         let parent_header = {
-            self.chain.get_header_by_height(header.height - 1)
+            self.chain
+                .get_header_by_height(header.height - 1)
                 .ok_or("not found parent block for the header".to_string())?
         };
         // TODO maybe reset validator
@@ -470,7 +483,9 @@ impl Engine for ImplBackend {
                 while true {
                     if let Err(err) = abort.try_recv() {
                         match err {
-                            TryRecvError::Disconnected => return futures::future::err(EngineError::Interrupt),
+                            TryRecvError::Disconnected => {
+                                return futures::future::err(EngineError::Interrupt);
+                            }
                             _ => {}
                         }
                     } else {
@@ -486,16 +501,14 @@ impl Engine for ImplBackend {
                                 return futures::future::ok(block);
                             }
                         }
-                        Err(err) => {
-                            match err {
-                                RecvTimeoutError => {
-                                    continue;
-                                }
-                                other => {
-                                    return panic!(other);
-                                }
+                        Err(err) => match err {
+                            RecvTimeoutError => {
+                                continue;
                             }
-                        }
+                            other => {
+                                return panic!(other);
+                            }
+                        },
                     }
                 }
 
@@ -505,21 +518,21 @@ impl Engine for ImplBackend {
             &tx,
         );
 
-
         let chain = self.chain.clone();
-        Arbiter::spawn(res.then(move |res| {
-            match res {
-                Ok(block) => {
-                    chain.insert_block(&block);
+        Arbiter::spawn(
+            res.then(move |res| {
+                match res {
+                    Ok(block) => {
+//                        chain.insert_block(&block);
+                    }
+                    Err(err) => {
+                        error!("Consensus fail, err:{:?}", err);
+                    }
                 }
-                Err(err) => {
-                    error!("Consensus fail, err:{:?}", err);
-                }
-            }
-            futures::future::ok::<(), String>(())
-        }).map_err(|err| {
-            panic!(err)
-        }));
+                futures::future::ok::<(), String>(())
+            })
+                .map_err(|err| panic!(err)),
+        );
         Ok(())
     }
 }
@@ -527,6 +540,7 @@ impl Engine for ImplBackend {
 impl ImplBackend {
     pub fn set_core_pid(&mut self, core_pid: Addr<Core>) {
         self.core_pid = Some(core_pid);
+        info!("Set core pid for backend");
     }
 }
 

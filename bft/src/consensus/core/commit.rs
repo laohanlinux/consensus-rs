@@ -61,6 +61,7 @@ impl HandleCommit for Core {
 
     // handle commit type message
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError> {
+        debug!("Handle commit message from {:?}", src.address());
         let subject = Subject::from(msg.msg());
         let _current_subject = self.current_state.subject().unwrap();
         self.check_message(MessageType::Commit, &subject.view)?;
@@ -68,7 +69,6 @@ impl HandleCommit for Core {
         let subject = Subject::from_bytes(Cow::from(msg.msg()));
         self.verify_commit(msg.commit_seal.as_ref(), &subject, sender, src.clone())?;
         <Core as HandleCommit>::accept(self, msg, src)?;
-
         let val_set = self.val_set();
         // receive more +2/3 votes
         if self.current_state.commits.len() > val_set.two_thirds_majority()

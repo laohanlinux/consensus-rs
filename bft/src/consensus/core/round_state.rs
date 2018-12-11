@@ -1,4 +1,4 @@
-use cryptocurrency_kit::crypto::{CryptoHash, Hash, EMPTY_HASH};
+use cryptocurrency_kit::crypto::{Hash, EMPTY_HASH};
 use cryptocurrency_kit::storage::values::StorageValue;
 
 use crate::{
@@ -16,7 +16,8 @@ pub struct RoundState {
     pub preprepare: Option<PrePrepare>,
     pub prepares: MessageManage,
     pub commits: MessageManage,
-    pub pending_request: Option<Request<Proposal>>, // 自己的提案
+    pub pending_request: Option<Request<Proposal>>,
+    // 自己的提案
     lock_hash: Option<Hash>, // 锁hash
 }
 
@@ -24,11 +25,11 @@ pub struct RoundState {
 impl RoundState
 {
     pub(crate) fn new_round_state(view: View, vals: ImplValidatorSet,
-                                                   lock_hash: Option<Hash>,
-                                                   preprepare: Option<PrePrepare>,
-                                                   pending_request: Option<Request<Proposal>>)
-        -> Self {
-        RoundState{
+                                  lock_hash: Option<Hash>,
+                                  preprepare: Option<PrePrepare>,
+                                  pending_request: Option<Request<Proposal>>)
+                                  -> Self {
+        RoundState {
             round: view.round,
             height: view.height,
             preprepare: preprepare,

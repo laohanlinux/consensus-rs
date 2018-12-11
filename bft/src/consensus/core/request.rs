@@ -37,7 +37,7 @@ impl HandlerRequst for Core {
         Ok(())
     }
 
-    fn accept(&mut self, _request: &Request<Proposal>) {
-
+    fn accept(&mut self, request: &Request<Proposal>) {
+        self.current_state.pending_request = Some(Request{proposal: request.proposal.clone()});
     }
 }

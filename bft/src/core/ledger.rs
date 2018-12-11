@@ -128,7 +128,6 @@ impl Ledger {
                 return Some(block.clone());
             }
 
-            println!("_____{:?}", hash);
             if let Some(block) = self.schema.blocks().get(&hash) {
                 // cache it
                 self.block_cache
@@ -165,6 +164,8 @@ impl Ledger {
         let mut heigh_db = self.schema.block_hashes_by_height();
         heigh_db.push(hash.clone());
         self.genesis = Some(block.clone());
+        // update last meta
+        self.update_meta(block);
     }
 
     pub fn add_block(&mut self, block: &Block) {
@@ -175,11 +176,7 @@ impl Ledger {
         }
 
         // update last meta
-        self.meta.header = header.clone();
-        self.meta.height = header.height;
-        self.meta.block_hash = hash;
-        self.meta.block = block.clone();
-
+        self.update_meta(block);
         // persists
         let mut block_db = self.schema.blocks();
         block_db.put(&hash, block.clone());
@@ -213,6 +210,14 @@ impl Ledger {
 
     pub fn get_schema(&self) -> &Schema {
         &self.schema
+    }
+
+    fn update_meta(&mut self, block: &Block) {
+        let header = block.header();
+        self.meta.header = header.clone();
+        self.meta.height = header.height;
+        self.meta.block_hash = block.hash();
+        self.meta.block = block.clone();
     }
 }
 

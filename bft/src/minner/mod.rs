@@ -135,3 +135,26 @@ impl Minner {
         (next_timestamp, pre_header.clone())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use cryptocurrency_kit::ethkey::{Random, Generator};
+
+    #[test]
+    fn t_basecoin() {
+        let nonce: u64 = random();
+        let to = Address::from(199);
+        let amount = random::<u64>();
+        let gas_limit = random::<u64>();
+        let gas_price = 1_u64;
+        let payload = Vec::from(chrono::Local::now().to_string());
+
+        let mut transaction = Transaction::new(nonce, to, amount, gas_limit, gas_price, payload);
+        transaction.sign(100, Random.generate().unwrap().secret());
+
+        let coinbase = transaction;
+        let tx_hash = merkle_root_transactions(vec![coinbase.clone()]);
+        println!("coin base hash: {:?}", tx_hash);
+    }
+}

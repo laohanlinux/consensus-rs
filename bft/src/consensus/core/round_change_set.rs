@@ -59,4 +59,10 @@ impl RoundChangeSet<ImplValidatorSet> {
         }
         None
     }
+
+    pub fn print_info(&self) {
+        for round_change in &self.round_changes {
+            debug!("round:{:?}, size:{:?}", round_change.0, round_change.1.len());
+        }
+    }
 }

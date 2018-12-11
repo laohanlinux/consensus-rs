@@ -89,5 +89,8 @@ mod test {
 
         ledger.add_genesis_block(&block);
         ledger.load_genesis();
+
+        assert_eq!(false, ledger.get_block_hash_by_height(0).is_none());
+        assert_eq!(true, ledger.get_block_hash_by_height(1).is_none());
     }
 }
