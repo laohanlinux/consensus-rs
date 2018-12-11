@@ -10,20 +10,21 @@ use crate::{
     config::Config,
     error::{ChainError, ChainResult},
     types::{Height, Validators, ValidatorArray, Validator, block::Block, block::Header},
-    subscriber::events::{ChainEvent, ChainEventSubscriber},
+    subscriber::events::{ChainEvent, ChainEventCT::ProcessSignals, ChainEventCT::SubscribeMessage},
 };
 use super::genesis::store_genesis_block;
 use super::ledger::Ledger;
 
 pub struct Chain {
     ledger: Arc<RwLock<Ledger>>,
-    subscriber: Addr<ChainEventSubscriber>,
+    subscriber: Addr<ProcessSignals>,
     genesis: Option<Block>,
     pub config: Config,
 }
 
 impl Chain {
-    pub fn new(config: Config, subscriber: Addr<ChainEventSubscriber>, ledger: Arc<RwLock<Ledger>>) -> Self {
+    pub fn new(config: Config, ledger: Arc<RwLock<Ledger>>) -> Self {
+        let subscriber = Actor::create(|_| ProcessSignals::new());
         Chain {
             ledger,
             subscriber: subscriber,
@@ -106,5 +107,22 @@ impl Chain {
         }
 
         result
+    }
+
+    pub fn get_subscriber(&self) -> Addr<ProcessSignals> {
+        self.subscriber.clone()
+    }
+
+    pub fn subscriber_event(&self, recipient: Recipient<ChainEvent>) {
+        let message = SubscribeMessage::new_subScribe(recipient);
+        let request_fut = self.subscriber.send(message);
+        Arbiter::spawn(
+            request_fut
+                .and_then(|_result| {
+                    info!("Subsribe chain event successfully");
+                    futures::future::ok(())
+                })
+                .map_err(|err| unimplemented!("{}", err)),
+        );
     }
 }

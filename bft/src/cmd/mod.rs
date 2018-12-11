@@ -52,9 +52,8 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
     let key_pair = KeyPair::from_secret(secret).unwrap();
     let ledger = init_store(&config)?;
     let ledger: Arc<RwLock<Ledger>> = Arc::new(RwLock::new(ledger));
-    // init subscriber
-    let sub = ChainEventSubscriber::new(SubscriberType::Async).start();
-    let mut chain = Chain::new(config.clone(), sub.clone(), ledger);
+
+    let mut chain = Chain::new(config.clone(), ledger);
 
     // init genesis
     init_genesis(&mut chain).map_err(|err| format!("{}", err))?;
@@ -196,6 +195,8 @@ fn start_mint(
 ) -> Addr<Minner> {
     let minter = key_pair.address();
     Minner::create(move |ctx| {
+        let recipient = ctx.address().recipient();
+        chain.subscriber_event(recipient);
         let (tx, rx) = crossbeam::channel::bounded(1);
         Minner::new(minter, key_pair, chain, txpool, engine, tx, rx)
     })

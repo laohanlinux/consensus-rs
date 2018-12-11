@@ -9,6 +9,15 @@ pub enum ChainEvent {
     NewHeader(Header),
 }
 
+// cross thread event
+pub mod ChainEventCT {
+    use ::actix::prelude::*;
+    use super::ChainEvent;
+    use crate::subscriber::impl_subscribe_handler;
+
+    impl_subscribe_handler!{ChainEvent}
+}
+
 pub enum SubscriberType {
     Async,
     Sync,
@@ -108,6 +117,7 @@ impl BroadcastEventSubscriber {
 mod test {
     use super::*;
     use actix_broker::BrokerSubscribe;
+    use actix_broker::Broker;
 
     struct ProActor {
         name: String,
@@ -142,7 +152,8 @@ mod test {
 
         fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) {
             println!("SubActor Received: {:?}", msg);
-            self.issue_async(msg);
+           // self.issue_async(msg);
+            Broker::issue_async(msg);
         }
     }
 
@@ -150,14 +161,17 @@ mod test {
     fn t_async_actor() {
         use crate::protocol::{GossipMessage, MessageType};
         crate::logger::init_test_env_log();
-        let pro = ProActor { name: "A".to_owned() }.start();
+        let pro = ProActor { name: "Same thread".to_owned() }.start();
 
         ::std::thread::spawn(move || {
             System::run(move || {
-                let pro = ProActor { name: "B".to_owned() }.start();
+                let pro = ProActor { name: "Cross thread".to_owned() }.start();
             });
         });
-        let sub = BroadcastEventSubscriber { subscriber_type: SubscriberType::Async }.start();
+
+        // customer
+//        let sub = BroadcastEventSubscriber { subscriber_type: SubscriberType::Async }.start();
+        let sub = SubActor {}.start();
 
         ::std::thread::spawn(move || {
             while true {
