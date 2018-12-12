@@ -24,7 +24,8 @@ use super::{
 pub(crate) fn store_genesis_block(genesis_config: &GenesisConfig, ledger: Arc<RwLock<Ledger>>) -> Result<(), String> {
     use chrono::{Local, DateTime, ParseError};
     let mut ledger = ledger.write();
-    if ledger.get_genesis_block().is_some() {
+    if let Some(genesis) =  ledger.get_genesis_block() {
+        info!("==> Genesis hash:{:?}", genesis.hash());
         ledger.reload_meta();
         return Ok(());
     }
@@ -131,28 +132,28 @@ mod test {
 
         });
 
-        let schema = ledger.get_schema();
-        for block in schema.blocks().iter() {
-            println!("{:?}", block);
-        }
-
-        println!("last_block {:?}", ledger.get_last_block());
+//        let schema = ledger.get_schema();
+//        for block in schema.blocks().iter() {
+//            println!("{:?}", block);
+//        }
+//
+//        println!("last_block {:?}", ledger.get_last_block());
     }
 
     #[test]
     fn t_exists_db() {
-        let database = Database::open_default("/tmp/block/c1").map_err(|err| err.to_string()).unwrap();
-        let schema = Schema::new(Arc::new(database));
-        for key in schema.blocks().keys() {
-            println!("{:?}", key);
-        }
+//        let database = Database::open_default("/tmp/block/c1").map_err(|err| err.to_string()).unwrap();
+//        let schema = Schema::new(Arc::new(database));
+//        for key in schema.blocks().keys() {
+//            println!("{:?}", key);
+//        }
 
-        for block in schema.blocks().iter() {
-            println!("{:?}", block);
-        }
+//        for block in schema.blocks().iter() {
+//            println!("{:?}", block);
+//        }
         
-        for value in schema.blocks().values() {
-            println!("{:?}", value);
-        }
+//        for value in schema.blocks().values() {
+//            println!("{:?}", value);
+//        }
     }
 }

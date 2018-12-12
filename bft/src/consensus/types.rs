@@ -1,8 +1,6 @@
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::Signature;
 use cryptocurrency_kit::storage::values::StorageValue;
-use rmps::decode::Error;
-use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 
 use std::borrow::Borrow;

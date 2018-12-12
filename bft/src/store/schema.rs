@@ -26,6 +26,7 @@ macro_rules! define_name {
 define_name!(
     TRANSACTIONS => "transaction";
     BLOCKS => "blocks";
+    HEADERS => "headers";
     BLOCK_HASHES_BY_HEIGHT => "block_hashes_by_height";
     BLOCK_TRANSACTIONS => "block_transactions";
     PRECOMMITS => "precommits";
@@ -53,8 +54,12 @@ impl Schema {
         MapIndex::new(TRANSACTIONS, self.db.clone())
     }
 
-    pub fn blocks(&self) -> MapIndex<Hash, Block> {
-        MapIndex::new(BLOCKS, self.db.clone())
+//    pub fn blocks(&self) -> MapIndex<Hash, Block> {
+//        MapIndex::new(BLOCKS, self.db.clone())
+//    }
+
+    pub fn headers(&self) -> MapIndex<Hash, Header> {
+        MapIndex::new(HEADERS, self.db.clone())
     }
 
     pub fn block_hashes_by_height(&self) -> ListIndex<Hash> {
@@ -69,7 +74,9 @@ impl Schema {
         let hash = self.block_hashes_by_height()
             .last()
             .expect("An attempt to get the `last_block` during creating the genesis block .");
-        self.blocks().get(&hash).unwrap()
+//        self.blocks().get(&hash).unwrap()
+        let header = self.headers().get(&hash).unwrap();
+        Block::new2(header, vec![])
     }
 
     pub fn validators(&self) -> Entry<ValidatorArray> {

@@ -9,7 +9,7 @@ use futures::Future;
 use crate::{
     config::Config,
     error::{ChainError, ChainResult},
-    types::{Height, Validators, ValidatorArray, Validator, block::Block, block::Header},
+    types::{Height, Validators, ValidatorArray, Validator, transaction::Transaction, block::Block, block::Header},
     subscriber::events::{ChainEvent, ChainEventCT::ProcessSignals, ChainEventCT::SubscribeMessage},
 };
 use super::genesis::store_genesis_block;
@@ -69,27 +69,31 @@ impl Chain {
     }
 
     pub fn get_last_height(&self) -> Height {
-        self.ledger.write().get_last_block_height().clone()
+        self.ledger.read().get_last_block_height().clone()
     }
 
     pub fn get_last_block(&self) -> Block {
-        self.ledger.write().get_last_block().clone()
+        self.ledger.read().get_last_block().clone()
     }
 
     pub fn get_block_by_hash(&self, block_hash: &Hash) -> Option<Block> {
-        self.ledger.write().get_block(block_hash)
+        self.ledger.read().get_block(block_hash)
+    }
+
+    pub fn get_transactions(&self) -> Vec<Transaction> {
+        self.ledger.read().get_transactions()
     }
 
     pub fn get_block_hash_by_height(&self, height: Height) -> Option<Hash> {
-        self.ledger.write().get_block_hash_by_height(height)
+        self.ledger.read().get_block_hash_by_height(height)
     }
 
     pub fn get_header_by_height(&self, height: Height) -> Option<Header> {
-        self.ledger.write().get_header_by_height(height)
+        self.ledger.read().get_header_by_height(height)
     }
 
     pub fn get_last_hash(&self) -> Hash {
-        self.ledger.write().get_last_block_hash().clone()
+        self.ledger.read().get_last_block_hash().clone()
     }
 
     pub fn add_validators(&self, _height: Height, validators: Vec<Address>) -> ChainResult {
@@ -195,10 +199,10 @@ mod test {
             println!("|{:?}", block1);
         });
 
-        let schema = ledger.get_schema();
-        for block in schema.blocks().iter() {
-            println!("{:?}", block);
-        }
+//        let schema = ledger.get_schema();
+//        for block in schema.blocks().iter() {
+//            println!("{:?}", block);
+//        }
 
         println!("last_block {:?}", ledger.get_last_block());
     }

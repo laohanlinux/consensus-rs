@@ -53,7 +53,7 @@ impl HandleRoundChange for Core {
     }
 
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
-        debug!("[{:?}]Handle round change message from {:?}, {}", self.address(), src.address(), self.address() == *src.address());
+        debug!("Handle round change message from {:?}, from me: {}", src.address(), self.address() == *src.address());
         let subject: Subject = Subject::from_bytes(Cow::from(msg.msg()));
         self.check_message(MessageType::RoundChange, &subject.view)?;
         let current_view = self.current_view();
@@ -63,7 +63,7 @@ impl HandleRoundChange for Core {
             .round_change_set
             .add(subject.view.round, msg.clone())
             .map_err(|err| ConsensusError::Unknown(err))?;
-        info!("-------> {:?}", n);
+        info!("round change votes size {:?}", n);
 
         // check round change more detail
         if self.wait_round_change && n == current_val_set.fault() {

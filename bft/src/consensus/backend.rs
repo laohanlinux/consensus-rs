@@ -73,7 +73,7 @@ pub fn new_impl_backend(
     subscriber: Addr<BroadcastEventSubscriber>,
 ) -> ImplBackend {
     let request_time = chain.config.request_time.as_millis();
-    let block_period = chain.config.block_period.as_millis();
+    let block_period = chain.config.block_period.as_secs();
     let config = Config {
         request_time: request_time as u64,
         block_period: block_period as u64,
@@ -407,12 +407,6 @@ impl Engine for ImplBackend {
         // TODO maybe reset validator
 
         header.votes = None;
-        header.time = parent_header.time + self.config.block_period;
-        let now = Local::now().timestamp() as u64;
-        if header.time < now {
-            header.time = now;
-        }
-
         self.proposed_block_hash = header.block_hash();
         Ok(())
     }
@@ -504,7 +498,7 @@ impl Engine for ImplBackend {
                                 continue;
                             }
                             other => {
-                                return panic!(other);
+                                panic!(other);
                             }
                         },
                     }

@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::any::{Any, TypeId};
 
 use ::actix::prelude::*;
@@ -81,10 +80,6 @@ mod test {
             write!(f, "")
         }
     }
-
-//    impl Proposal for testView {
-//        fn height(&self) -> Height {9}
-//    }
 
     #[test]
     fn test_type_of() {

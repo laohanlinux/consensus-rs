@@ -3,8 +3,6 @@ use cryptocurrency_kit::ethkey::signature::*;
 use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
 use cryptocurrency_kit::storage::keys::StorageKey;
 use cryptocurrency_kit::storage::values::StorageValue;
-use rmps::decode::Error;
-use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
@@ -139,6 +137,9 @@ struct TransactionSignature {
     signature: Option<Signature>,
 }
 
+implement_storagevalue_traits! {TransactionSignature}
+implement_cryptohash_traits! {TransactionSignature}
+
 impl TransactionSignature {
     fn packet_hash(tx: &Transaction) -> Vec<u8> {
         let sign = tx.signature.as_ref().unwrap().clone();
@@ -151,10 +152,7 @@ impl TransactionSignature {
             payload: tx.payload.clone(),
             signature: Some(sign),
         };
-
-        let mut buf: Vec<u8> = Vec::new();
-        signature.serialize(&mut Serializer::new(&mut buf)).unwrap();
-        buf
+        signature.into_bytes()
     }
 
     fn packet_signature(tx: &Transaction) -> Vec<u8> {
@@ -167,10 +165,7 @@ impl TransactionSignature {
             payload: tx.payload.clone(),
             signature: None,
         };
-
-        let mut buf: Vec<u8> = Vec::new();
-        signature.serialize(&mut Serializer::new(&mut buf)).unwrap();
-        buf
+        signature.into_bytes()
     }
 }
 

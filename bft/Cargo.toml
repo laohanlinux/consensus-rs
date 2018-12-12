@@ -19,8 +19,6 @@ rand = "0.5"
 hex = "*"
 sha3 = "0.7.3"
 rlp = "0.2.4"
-rmp = "*"
-rmp-serde  = "*"
 lazy_static = "1.1.0"
 crossbeam = {git = "https://github.com/crossbeam-rs/crossbeam.git"}
 ethereum-types = "*"
