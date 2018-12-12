@@ -114,11 +114,12 @@ impl BaseIndex {
     }
 
     pub fn get<K, V>(&self, key: &K) -> Option<V>
-    where
-        K: StorageKey + ?Sized,
-        V: StorageValue,
+        where
+            K: StorageKey + ?Sized,
+            V: StorageValue,
     {
         let key = self.prefix_key(key);
+        info!("GET=======> {:?}", key);
         if let Some(value) = self.view.get(COL, &key).unwrap() {
             return Some(StorageValue::from_bytes(Cow::from(value.as_ref())));
         }
@@ -126,17 +127,17 @@ impl BaseIndex {
     }
 
     pub fn contains<K>(&self, key: &K) -> bool
-    where
-        K: StorageKey + ?Sized,
+        where
+            K: StorageKey + ?Sized,
     {
         self.view.get(COL, &self.prefix_key(key)).unwrap().is_some()
     }
 
     pub fn iter<P, K, V>(&self, subprefix: &P) -> BaseIndexIter<K, V>
-    where
-        P: StorageKey,
-        K: StorageKey,
-        V: StorageValue,
+        where
+            P: StorageKey,
+            K: StorageKey,
+            V: StorageValue,
     {
         let iter_prefix = self.prefix_key(subprefix);
         BaseIndexIter {
@@ -150,11 +151,11 @@ impl BaseIndex {
     }
 
     pub fn iter_from<P, F, K, V>(&self, subprefix: &P, from: &F) -> BaseIndexIter<K, V>
-    where
-        P: StorageKey,
-        F: StorageKey + ?Sized,
-        K: StorageKey,
-        V: StorageValue,
+        where
+            P: StorageKey,
+            F: StorageKey + ?Sized,
+            K: StorageKey,
+            V: StorageValue,
     {
         let mut prefix_buf = self.prefix_key(subprefix);
         let base_prefix_len = prefix_buf.len();
@@ -193,20 +194,25 @@ impl BaseIndex {
     }
 
     pub fn put<K, V>(&mut self, key: &K, value: V)
-    where
-        K: StorageKey,
-        V: StorageValue,
+        where
+            K: StorageKey,
+            V: StorageValue,
     {
+//        info!("Put ------> {:?}", key);
+
         let key = self.prefix_key(key);
         let mut tx = self.view.transaction();
-        tx.put_vec(COL, &key, value.into_bytes());
+        info!("Put Key------> {:?}", key);
+        let b = value.into_bytes();
+        info!("Put Value---> {:?}", b);
+        tx.put_vec(COL, &key, b);
         self.view.write(tx).unwrap();
         self.view.flush().unwrap();
     }
 
     pub fn remove<K>(&mut self, key: &K)
-    where
-        K: StorageKey + ?Sized,
+        where
+            K: StorageKey + ?Sized,
     {
         let key = self.prefix_key(key);
         let mut tx = self.view.transaction();
@@ -229,9 +235,9 @@ impl BaseIndex {
 }
 
 impl<'a, K, V> Iterator for BaseIndexIter<'a, K, V>
-where
-    K: StorageKey,
-    V: StorageValue,
+    where
+        K: StorageKey,
+        V: StorageValue,
 {
     type Item = (K::Owned, V);
 
@@ -261,7 +267,7 @@ pub(crate) fn print_str(key: &[u8], value: &[u8]) {
         String::from_utf8_lossy(key),
         String::from_utf8_lossy(value)
     )
-    .unwrap();
+        .unwrap();
 }
 
 pub(crate) fn print_bytes(base_prefix_len: usize, idx: &[u8], key: &[u8], value: &[u8]) {
@@ -274,7 +280,7 @@ pub(crate) fn print_bytes(base_prefix_len: usize, idx: &[u8], key: &[u8], value:
         key,
         value
     )
-    .unwrap();
+        .unwrap();
 }
 
 #[cfg(test)]

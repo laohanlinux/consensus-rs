@@ -148,7 +148,6 @@ struct HeaderBytes<'a> {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
     header: Header,
-    #[serde(rename = "tx")]
     transactions: Vec<Transaction>,
 }
 
@@ -162,6 +161,13 @@ impl Block {
         Block {
             header,
             transactions: txs,
+        }
+    }
+
+    pub fn new2(header: Header, transactions: Vec<Transaction>) -> Self {
+        Block {
+            header: header,
+            transactions: transactions,
         }
     }
 
@@ -181,6 +187,10 @@ impl Block {
 
     pub fn transactions(&self) -> &Vec<Transaction> {
         &self.transactions
+    }
+
+    pub fn mut_transactions(&mut self) -> &mut Vec<Transaction> {
+        &mut self.transactions
     }
 
     pub fn coinbase(&self) -> Address {
