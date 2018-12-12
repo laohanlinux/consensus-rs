@@ -113,14 +113,14 @@ impl Actor for TcpServer {
             self.node_info.0, self.node_info.1
         );
         self.subscribe_async::<BroadcastEvent>(ctx);
-        ctx.run_interval(::std::time::Duration::from_secs(2), |act, _| {
-            info!(
-                "Connect clients: {}\nlocal-id:{}, \n{}",
-                act.peers.len(),
-                act.node_info.0.to_base58(),
-                node_info(&act.peers)
-            );
-        });
+//        ctx.run_interval(::std::time::Duration::from_secs(2), |act, _| {
+//            info!(
+//                "Connect clients: {}\nlocal-id:{}, \n{}",
+//                act.peers.len(),
+//                act.node_info.0.to_base58(),
+//                node_info(&act.peers)
+//            );
+//        });
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {

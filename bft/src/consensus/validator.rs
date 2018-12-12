@@ -150,6 +150,7 @@ impl ValidatorSet for ImplValidatorSet {
         let vals_size = self.validators.len() as f32;
         let ceil = vals_size * 2.0 / 3.0;
         ceil.floor() as usize
+//        0
     }
 
     fn has_two_thirds_majority(&self, n: usize) -> bool {

@@ -53,8 +53,6 @@ pub fn create_consensus_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber:
         });
     });
     let core_pid = rx.recv().unwrap();
-    core_pid.do_send(OpCMD::Ping);
-
     backend.set_core_pid(core_pid.clone());
     let engine_backend: SafeEngine = Box::new(backend.clone()) as SafeEngine;
     (core_pid, engine_backend)

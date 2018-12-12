@@ -59,7 +59,7 @@ impl HandlePreprepare for Core {
                             return Err(ConsensusError::Engine(EngineError::InvalidProposal));
                         }
                     };
-                    if pre_header.hash() != block.hash() {
+                    if pre_header.block_hash() != block.hash() {
                         return Err(ConsensusError::Engine(EngineError::InvalidProposal));
                     }
                     let pre_height = block.height() - 1;

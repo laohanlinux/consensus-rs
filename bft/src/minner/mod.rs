@@ -57,7 +57,7 @@ impl Handler<ChainEvent> for Minner {
     fn handle(&mut self, msg: ChainEvent, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             ChainEvent::NewHeader(last_header) => {
-                info!("Rceive a new header, hash:{:?}, height: {:?}", last_header.hash(), last_header.height);
+                info!("Receive a new header event notify, hash:{:?}, height: {:?}", last_header.block_hash(), last_header.height);
                 // stop current consensus
                 self.seal_tx.send(()).unwrap();
                 let seal = self.seal_rx.clone();
@@ -103,7 +103,7 @@ impl Minner {
         let (next_time, pre_header) = self.next_block();
         let coinbase = self.coinbase_transaction();
 
-        let pre_hash: Hash = pre_header.hash();
+        let pre_hash: Hash = pre_header.block_hash();
         let tx_hash = merkle_root_transactions(vec![coinbase.clone()]);
 
         let header = Header::new_mock(pre_hash, self.minter, tx_hash, pre_header.height + 1, next_time, None);

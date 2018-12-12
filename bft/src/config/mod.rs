@@ -12,6 +12,8 @@ pub struct Config {
     pub chain_id: u64,
     pub ip: String,
     pub port: u16,
+    pub api_ip: String,
+    pub api_port: u16,
     #[serde(with = "serde_millis")]
     pub block_period: Duration,
     #[serde(with = "serde_millis")]
@@ -40,6 +42,8 @@ impl Default for Config {
             chain_id: 98,
             ip: "127.0.0.1".to_string(),
             port: 7960,
+            api_ip: "0.0.0.0".to_owned(),
+            api_port: 8960,
             block_period: Duration::from_millis(3 * 1000),
             request_time: Duration::from_millis(3 * 1000),
             peer_id: "QmbBr2fHwLFKvHkAq1BpbEr4dvR8P6orQxHkVaxeJsJiW8".to_string(),

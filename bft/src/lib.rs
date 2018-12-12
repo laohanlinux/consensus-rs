@@ -38,6 +38,7 @@ extern crate evmap;
 #[macro_use]
 extern crate actix;
 extern crate actix_broker;
+extern crate actix_web;
 #[macro_use]
 extern crate crossbeam;
 #[macro_use]
@@ -73,3 +74,4 @@ pub mod cmd;
 pub mod config;
 pub mod logger;
 pub mod mocks;
+pub mod api;
