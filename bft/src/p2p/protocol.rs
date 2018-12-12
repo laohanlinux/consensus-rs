@@ -5,8 +5,6 @@ use std::str::FromStr;
 use libp2p::{PeerId, Multiaddr};
 use cryptocurrency_kit::crypto::{CryptoHash, Hash, hash};
 use cryptocurrency_kit::storage::values::StorageValue;
-use rmps::decode::Error;
-use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, Message)]

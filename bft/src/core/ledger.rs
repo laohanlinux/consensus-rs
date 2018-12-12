@@ -2,7 +2,7 @@ use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use kvdb_rocksdb::{Database, DatabaseConfig, DatabaseIterator};
 use lru_time_cache::LruCache;
 use parking_lot::RwLock;
-use std::collections::HashMap;
+use chrono::{DateTime, TimeZone, NaiveDateTime, Utc};
 
 use crate::{
     store::schema::Schema,
@@ -74,12 +74,12 @@ impl Ledger {
         if self.genesis.is_some() {
             return self.genesis.as_ref();
         }
-        let genesis = self.get_block_by_height(0);
-        if genesis.is_none() {
-            return None;
+        if let Some(block) = self.get_block_by_height(0) {
+            self.genesis.replace(block);
+            self.genesis.as_ref()
+        } else {
+            None
         }
-        self.genesis.replace(genesis.unwrap());
-        self.genesis.as_ref()
     }
 
     pub fn get_last_block_height(&self) -> &Height {
@@ -222,7 +222,8 @@ impl Ledger {
 
         // update last meta
         self.update_meta(block);
-        info!("🔨🔨🔨Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, header.time, header.proposer);
+        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(header.time as i64, 0), Utc);
+        info!("🔨🔨🔨Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, dt.to_rfc3339(), header.proposer);
     }
 
     pub fn add_validators(&mut self, validators: Vec<Validator>) {

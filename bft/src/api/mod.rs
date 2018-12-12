@@ -1,4 +1,4 @@
-use actix_web::{http, server, App, State, Responder, HttpRequest, HttpResponse};
+use actix_web::{http, server, App, Responder, HttpRequest};
 use futures::future;
 use futures::Future;
 

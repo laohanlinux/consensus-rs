@@ -10,8 +10,6 @@ extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 extern crate serde_millis;
-extern crate rmp;
-extern crate rmp_serde as rmps;
 #[macro_use]
 extern crate runtime_fmt;
 extern crate bigint;

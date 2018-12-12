@@ -2,8 +2,6 @@ use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::common::to_hex;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH};
 use cryptocurrency_kit::storage::values::StorageValue;
-use rmps::decode::Error;
-use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 
 use std::io::Cursor;

@@ -81,7 +81,6 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
         let p2p_event_notify = init_p2p_event_notify();
         let _discover_pid = init_p2p_service(p2p_event_notify.clone(), &config_clone);
         init_tcp_server(chain.clone(), p2p_event_notify.clone(), genesis.hash(), core_pid.clone(), &config_clone);
-        crate::util::TimerRuntime::new(Duration::from_secs(150));
     }
 
     // spawn new thread to handle mine
@@ -116,12 +115,12 @@ fn init_tcp_server(chain: Arc<Chain>, p2p_subscriber: Addr<ProcessSignals>, gene
     let peer_id = PeerId::from_str(&config.peer_id).unwrap();
     let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
     let author = author_handshake(genesis.clone());
-    let h1 = Box::new(handle_msg_middle(core_pid, chain));
+    let h1 = Box::new(handle_msg_middle(core_pid, chain.clone()));
     let server = TcpServer::new(peer_id, mul_addr, None, genesis.clone(), Box::new(author), h1);
 
     // subscriber p2p event, sync operation
     {
-        let recipient = server.recipient();
+        let recipient = server.clone().recipient();
         // register
         let message = SubscribeMessage::SubScribe(recipient);
         let request_fut = p2p_subscriber.send(message);
@@ -133,6 +132,11 @@ fn init_tcp_server(chain: Arc<Chain>, p2p_subscriber: Addr<ProcessSignals>, gene
                 })
                 .map_err(|err| unimplemented!("{}", err)),
         );
+    }
+
+    // subscriber chain event, async operation
+    {
+        chain.subscriber_event(server.clone().recipient());
     }
     info!("Init tcp server successfully");
 }

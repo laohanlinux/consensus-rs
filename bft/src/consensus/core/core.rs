@@ -3,8 +3,6 @@ use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::ethkey::{KeyPair, Signature};
-use rmps::decode::Error;
-use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 use futures::Future;
 
@@ -62,7 +60,7 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
             P2PMsgCode::Block => {
                 let block = Block::from_bytes(Cow::from(&payload));
                 info!("Receive a new block from network, hash: {:?}, height: {:?}", block.hash(), block.height());
-//                chain.insert_block(&block);
+                chain.insert_block(&block);
             }
             _ => unimplemented!()
         }

@@ -19,7 +19,6 @@ use crate::{
     subscriber::events::ChainEvent,
     core::chain::Chain,
     core::tx_pool::{TxPool, SafeTxPool},
-    consensus::backend::Backend,
     consensus::consensus::{Engine, SafeEngine},
     types::Timestamp,
     types::block::{Block, Header},
@@ -129,6 +128,7 @@ impl Minner {
         let pre_timestamp = pre_header.time;
         let next_timestamp = pre_timestamp + self.chain.config.block_period.as_secs();
         let now_timestamp = chrono::Local::now().timestamp() as u64;
+        info!("now timestamp: {}, pre_timestamp: {}, next_timestamp: {}", now_timestamp, pre_timestamp, next_timestamp);
         if now_timestamp > next_timestamp {
             return (now_timestamp, pre_header.clone());
         }

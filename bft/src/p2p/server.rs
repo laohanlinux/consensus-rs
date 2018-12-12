@@ -162,6 +162,12 @@ impl Handler<BroadcastEvent> for TcpServer {
                 let msg = RawMessage::new(header, payload);
                 self.broadcast(&msg);
             }
+            BroadcastEvent::Block(block) => {
+                let header = RawHeader::new(P2PMsgCode::Block, 10, chrono::Local::now().timestamp_millis() as u64);
+                let payload = block.into_bytes();
+                let msg = RawMessage::new(header, payload);
+                self.broadcast(&msg);
+            }
             _ => unimplemented!()
         }
         ()

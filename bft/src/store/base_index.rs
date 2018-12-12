@@ -7,9 +7,6 @@ use cryptocurrency_kit::storage::keys::StorageKey;
 use cryptocurrency_kit::storage::values::StorageValue;
 use kvdb::{DBTransaction, DBValue};
 use kvdb_rocksdb::{Database, DatabaseIterator};
-
-use rmps::decode::Error;
-use rmps::{Deserializer, Serializer};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
@@ -119,7 +116,6 @@ impl BaseIndex {
             V: StorageValue,
     {
         let key = self.prefix_key(key);
-        info!("GET=======> {:?}", key);
         if let Some(value) = self.view.get(COL, &key).unwrap() {
             return Some(StorageValue::from_bytes(Cow::from(value.as_ref())));
         }
@@ -198,14 +194,9 @@ impl BaseIndex {
             K: StorageKey,
             V: StorageValue,
     {
-//        info!("Put ------> {:?}", key);
-
         let key = self.prefix_key(key);
         let mut tx = self.view.transaction();
-        info!("Put Key------> {:?}", key);
-        let b = value.into_bytes();
-        info!("Put Value---> {:?}", b);
-        tx.put_vec(COL, &key, b);
+        tx.put_vec(COL, &key, value.into_bytes());
         self.view.write(tx).unwrap();
         self.view.flush().unwrap();
     }

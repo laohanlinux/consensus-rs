@@ -4,7 +4,6 @@ use std::fs::{self, File};
 use std::env;
 
 use crate::config::Config;
-use crate::types::block::{Header, Block};
 
 pub(crate) mod utils;
 
@@ -15,15 +14,6 @@ pub(crate) fn t_config() -> Config {
     let config: Config = toml::from_str(&fs::read_to_string(s).unwrap()).unwrap();
     config
 }
-
-//pub(crate) fn genesis_block(config: &Config) -> Block {
-//
-//}
-
-//pub(crate) fn timer(d: ::std::time::Duration) {
-//    use tokio::timer;
-//    futures::future::
-//}
 
 #[cfg(test)]
 mod test {
