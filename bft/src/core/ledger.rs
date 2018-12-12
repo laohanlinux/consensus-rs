@@ -2,6 +2,7 @@ use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use kvdb_rocksdb::{Database, DatabaseConfig, DatabaseIterator};
 use lru_time_cache::LruCache;
 use parking_lot::RwLock;
+use std::collections::HashMap;
 
 use crate::{
     store::schema::Schema,
@@ -45,6 +46,7 @@ pub struct Ledger {
     genesis: Option<Block>,
     validators: Vec<Validator>,
     schema: Schema,
+    blocks: RwLock<HashMap<Hash, Block>>,
 }
 
 impl Ledger {
@@ -62,6 +64,7 @@ impl Ledger {
             genesis: None,
             validators,
             schema,
+            blocks: RwLock::new(HashMap::new()),
         }
     }
 
@@ -69,7 +72,15 @@ impl Ledger {
         self.schema.transaction().get(tx_hash)
     }
 
-    pub fn get_genesis_block(&self) -> Option<&Block> {
+    pub fn get_genesis_block(&mut self) -> Option<&Block> {
+        if self.genesis.is_some() {
+            return self.genesis.as_ref();
+        }
+        let genesis = self.get_block_by_height(0);
+        if genesis.is_none() {
+            return None;
+        }
+        self.genesis.replace(genesis.unwrap());
         self.genesis.as_ref()
     }
 
@@ -99,7 +110,10 @@ impl Ledger {
             return Some(header.clone());
         }
 
-        if let Some(block) = self.schema.blocks().get(block_hash) {
+//        if let Some(block) = self.schema.blocks().get(block_hash) {
+//            return Some(block.header().clone());
+//        }
+        if let Some(block) = self.blocks.write().get(block_hash) {
             return Some(block.header().clone());
         }
         None
@@ -108,15 +122,22 @@ impl Ledger {
     pub fn get_block(&self, block_hash: &Hash) -> Option<Block> {
         let mut cache = self.block_cache.write();
         let block = cache.get(block_hash);
-        if block.is_none() {
-            let db = self.schema.blocks();
-            let block = db.get(block_hash);
-            if block.is_some() {
-                cache.insert(*block_hash, block.as_ref().unwrap().clone());
-                return block;
+        match block {
+            Some(block) => Some(block.clone()),
+            None => {
+//                let db = self.schema.blocks();
+//                let hashes = db.values();
+//                for hash in hashes {
+//                    info!("====> {:?}", hash);
+//                }
+                if let Some(block) = self.blocks.read().get(block_hash) {
+                    cache.insert(*block_hash, block.clone());
+                    Some(block.clone())
+                } else {
+                    None
+                }
             }
         }
-        None
     }
 
     //  FIXME store it into schema
@@ -128,7 +149,7 @@ impl Ledger {
                 return Some(block.clone());
             }
 
-            if let Some(block) = self.schema.blocks().get(&hash) {
+            if let Some(block) = self.blocks.write().get(&hash) {
                 // cache it
                 self.block_cache
                     .write()
@@ -144,8 +165,7 @@ impl Ledger {
             if let Some(header) = self.header_cache.write().get(&block_hash) {
                 return Some(header.clone());
             }
-            info!("Block=> {:?}", block_hash);
-            if let Some(block) = self.schema.blocks().get(&block_hash) {
+            if let Some(block) = self.blocks.write().get(&block_hash) {
                 // cache it
                 self.header_cache
                     .write()
@@ -159,29 +179,39 @@ impl Ledger {
     pub fn add_genesis_block(&mut self, block: &Block) {
         let hash = block.hash();
         // persists
-        let mut block_db = self.schema.blocks();
-        block_db.put(&hash, block.clone());
-        let mut heigh_db = self.schema.block_hashes_by_height();
-        heigh_db.push(hash.clone());
-        self.genesis = Some(block.clone());
+        {
+            let mut block_db = self.blocks.write();
+            block_db.insert(hash.clone(), block.clone());
+            let mut heigh_db = self.schema.block_hashes_by_height();
+            heigh_db.push(hash.clone());
+            self.genesis = Some(block.clone());
+        }
+
         // update last meta
         self.update_meta(block);
     }
 
     pub fn add_block(&mut self, block: &Block) {
         let header = block.header();
-        let hash = header.hash();
+        let hash = header.block_hash();
         if self.meta.header.height >= header.height {
             return;
         }
 
-        // update last meta
-        self.update_meta(block);
         // persists
-        let mut block_db = self.schema.blocks();
-        block_db.put(&hash, block.clone());
-        let mut heigh_db = self.schema.block_hashes_by_height();
-        heigh_db.push(hash.clone());
+        {
+            let mut block_db = self.blocks.write();
+            debug!("Write block, hash:{:?}, height:{:?}", hash.short(), block.height());
+            block_db.insert(hash.clone(), block.clone());
+            let mut height_db = self.schema.block_hashes_by_height();
+            debug!("Write height, hash:{:?}, height:{:?}", hash.short(), block.height());
+            height_db.push(hash.clone());
+
+            assert_eq!(height_db.last().unwrap(), hash);
+            assert_eq!(height_db.len(), block.height() + 1);
+        }
+
+
         // cache it
         self.header_cache
             .get_mut()
@@ -189,7 +219,9 @@ impl Ledger {
         self.block_cache
             .get_mut()
             .insert(hash, block.clone());
-        info!("🔨🔨🔨🔨🔨 Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, header.time, header.proposer);
+        // update last meta
+        self.update_meta(block);
+        info!("🔨🔨🔨Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, header.time, header.proposer);
     }
 
     pub fn add_validators(&mut self, validators: Vec<Validator>) {
@@ -200,9 +232,12 @@ impl Ledger {
         self.validators = validators;
     }
 
-    pub fn load_genesis(&mut self) {
-        let block = self.get_block_by_height(0).unwrap();
-        self.genesis = Some(block);
+    pub fn reload_meta(&mut self) {
+        let hashes = self.schema.block_hashes_by_height();
+        let last_hash = hashes.last().unwrap();
+        info!("reload meta, hash: {:?}, total blocks: {}", last_hash, hashes.len());
+        let last_block = self.get_block(&last_hash).unwrap();
+        self.update_meta(&last_block);
     }
 
     pub fn get_schema(&self) -> &Schema {

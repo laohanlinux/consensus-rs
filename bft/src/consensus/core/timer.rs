@@ -42,7 +42,7 @@ impl Actor for Timer {
 impl Handler<Op> for Timer {
     type Result = ();
     fn handle(&mut self, msg: Op, ctx: &mut Self::Context) -> Self::Result {
-        info!("[{:?}]{}'s timer actor triggers, op:{:?}", self.uuid.to_string(), self.name, msg);
+//        info!("[{:?}]{}'s timer actor triggers, op:{:?}", self.uuid.to_string(), self.name, msg);
         match msg {
             Op::Stop => ctx.stop(),
             Op::Interval => {

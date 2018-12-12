@@ -62,7 +62,7 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
             P2PMsgCode::Block => {
                 let block = Block::from_bytes(Cow::from(&payload));
                 info!("Receive a new block from network, hash: {:?}, height: {:?}", block.hash(), block.height());
-                chain.insert_block(&block);
+//                chain.insert_block(&block);
             }
             _ => unimplemented!()
         }

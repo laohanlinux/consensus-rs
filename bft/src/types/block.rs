@@ -76,6 +76,12 @@ impl Header {
         }
     }
 
+    pub fn block_hash(&self) -> Hash {
+        let mut header = self.clone();
+        header.votes = None;
+        <Header as CryptoHash>::hash(&header)
+    }
+
     pub fn new_mock(pre_hash: Hash, proposer: Address, tx_hash: Hash, height: Height, tm: Timestamp, extra: Option<Vec<u8>>) -> Self {
         Self::new(pre_hash, proposer, EMPTY_HASH, tx_hash, EMPTY_HASH, 0, 0, height, 0, 0, tm, None, extra)
     }
@@ -101,6 +107,45 @@ impl Header {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+struct HeaderBytes<'a> {
+    pub prev_hash: Cow<'a, Hash>,
+    pub proposer: Address,
+    pub root: Cow<'a, Hash>,
+    // state root
+    pub tx_hash: Cow<'a, Hash>,
+    // transactions root
+    pub receipt_hash: Cow<'a, Hash>,
+    // receipt_root
+    pub bloom: Bloom,
+    pub difficulty: Difficulty,
+    pub height: Height,
+    pub gas_limit: Gas,
+    pub gas_used: Gas,
+    pub time: Timestamp,
+    #[serde(default)]
+    pub extra: Option<Cow<'a, Vec<u8>>>,
+}
+
+//impl HeaderBytes<'_> {
+//    fn new(header: &Header) -> Self {
+//        HeaderBytes {
+//            prev_hash: Cow::from(&header.prev_hash),
+//            proposer: header.proposer.clone(),
+//            root: Cow::from(header.root),
+//            tx_hash: Cow::from(header.tx_hash),
+//            receipt_hash: Cow::from(header.receipt_hash),
+//            bloom: header.bloom,
+//            difficulty: header.difficulty,
+//            height: header.height,
+//            gas_limit: header.gas_limit,
+//            gas_used: header.gas_used,
+//            time: header.time,
+//            extra: None,
+//        }
+//    }
+//}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
     header: Header,
     #[serde(rename = "tx")]
@@ -109,6 +154,8 @@ pub struct Block {
 
 implement_cryptohash_traits! {Block}
 implement_storagevalue_traits! {Block}
+
+pub type Blocks = Vec<Block>;
 
 impl Block {
     pub fn new(header: Header, txs: Vec<Transaction>) -> Self {
@@ -119,7 +166,7 @@ impl Block {
     }
 
     pub fn hash(&self) -> Hash {
-        self.header.hash()
+        self.header.block_hash()
     }
 
     pub fn header(&self) -> &Header {

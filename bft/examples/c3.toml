@@ -1,6 +1,8 @@
 chain_id = 10
 ip = "127.0.0.1"
 port = 7693
+api_ip = "0.0.0.0"
+api_port = 8693
 block_period = 10000 # ms
 request_time = 5000 # ms
 peer_id = "QmZREuJee6NMFpYGroctffcwUVDAYmt3mB1eisSVqVVfwA"

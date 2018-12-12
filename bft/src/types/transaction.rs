@@ -27,6 +27,7 @@ pub struct Transaction {
     payload: Vec<u8>,
     #[serde(rename = "sign")]
     signature: Option<Signature>,
+    #[serde(skip_serializing, skip_deserializing)]
     hash: Option<Hash>,
 }
 

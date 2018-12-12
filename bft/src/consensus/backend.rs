@@ -171,7 +171,6 @@ impl Backend for ImplBackend {
         let mut block = proposal.block().clone();
         let votes = block.mut_votes();
         votes.unwrap().add_votes(&seals);
-        info!("9999999999999999999, {:?}, {}", block.hash(), block.height());
         let result = self.chain.insert_block(&block);
         if let Err(err) = result {
             match err {
@@ -204,7 +203,7 @@ impl Backend for ImplBackend {
     fn verify(&self, proposal: &Proposal) -> (Duration, Result<(), EngineError>) {
         let block = &proposal.0;
         let header = block.header();
-        let blh = header.hash();
+        let blh = header.block_hash();
         if self.has_bad_proposal(blh) {
             return (Duration::from_nanos(0), Err(EngineError::InvalidProposal));
         }
@@ -326,9 +325,9 @@ impl Engine for ImplBackend {
                 .get_header_by_height(header.height - 1)
                 .ok_or(EngineError::UnknownAncestor(header.height, header.height - 1))?
         };
-        if parent_header.hash() != header.prev_hash {
+        if parent_header.block_hash() != header.prev_hash {
             return Err(EngineError::Unknown(
-                format!("parent hash({:?}) != heaer.prev hash({:?})", parent_header.hash(), header.prev_hash),
+                format!("parent hash({:?}) != heaer.prev hash({:?})", parent_header.block_hash(), header.prev_hash),
             ));
         }
         if header.time < parent_header.time + self.config.block_period {
@@ -386,7 +385,7 @@ impl Engine for ImplBackend {
         Arbiter::spawn(
             request
                 .and_then(move |result| {
-                    info!("----->wait request response");
+                    info!("New heander event has handled");
                     futures::future::ok(())
                 })
                 .map_err(|err| panic!(err)),
@@ -396,8 +395,8 @@ impl Engine for ImplBackend {
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
         info!(
-            "Prepare header, hash:{:?}, height:{:?}",
-            header.hash(),
+            "Excute prepare work, header, hash:{:?}, height:{:?}",
+            header.block_hash(),
             header.height
         );
         let parent_header = {
@@ -414,7 +413,7 @@ impl Engine for ImplBackend {
             header.time = now;
         }
 
-        self.proposed_block_hash = header.hash();
+        self.proposed_block_hash = header.block_hash();
         Ok(())
     }
 
@@ -461,7 +460,7 @@ impl Engine for ImplBackend {
 
         info!(
             "Wait for the timestamp of header for ajustting the block period, hash:{:?}, height:{:?}, delay: {}",
-            header.hash().short(), header.height, delay);
+            header.block_hash().short(), header.height, delay);
         ::std::thread::sleep(Duration::from_secs(delay));
 
         // add clear function
@@ -539,7 +538,7 @@ impl Engine for ImplBackend {
 impl ImplBackend {
     pub fn set_core_pid(&mut self, core_pid: Addr<Core>) {
         self.core_pid = Some(core_pid);
-        info!("Set core pid for backend");
+        trace!("Set core pid for backend");
     }
 }
 

@@ -37,6 +37,7 @@ use crate::{
     subscriber::events::{BroadcastEventSubscriber, ChainEventSubscriber, SubscriberType},
     subscriber::*,
     types::Validator,
+    api::start_api,
 };
 
 pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
@@ -47,7 +48,6 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
         return Err(result.err().unwrap());
     }
     let config = result.unwrap();
-    println!("--> {:?}", config);
     let secret = Secret::from_str(&config.secret).expect("Secret is uncorrect");
     let key_pair = KeyPair::from_secret(secret).unwrap();
     let ledger = init_store(&config)?;
@@ -64,6 +64,8 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
     let _tx_pool = Arc::new(RwLock::new(init_transaction_pool(&config)));
 
     let chain = Arc::new(chain);
+
+    init_api(&config, chain.clone());
 
     let broadcast_subscriber = BroadcastEventSubscriber::new(SubscriberType::Async).start();
 
@@ -200,6 +202,15 @@ fn start_mint(
         let (tx, rx) = crossbeam::channel::bounded(1);
         Minner::new(minter, key_pair, chain, txpool, engine, tx, rx)
     })
+}
+
+fn init_api(config: &Config, chain: Arc<Chain>) {
+    let config = config.clone();
+    let chain = chain.clone();
+    spawn(move || {
+        info!("Start service api");
+        start_api(chain, format!("{}:{}", config.api_ip, config.api_port));
+    });
 }
 
 fn init_signal_handle() {

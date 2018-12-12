@@ -25,7 +25,7 @@ pub(crate) fn store_genesis_block(genesis_config: &GenesisConfig, ledger: Arc<Rw
     use chrono::{Local, DateTime, ParseError};
     let mut ledger = ledger.write();
     if ledger.get_genesis_block().is_some() {
-        ledger.load_genesis();
+        ledger.reload_meta();
         return Ok(());
     }
     // add validators
@@ -52,7 +52,6 @@ pub(crate) fn store_genesis_block(genesis_config: &GenesisConfig, ledger: Arc<Rw
                                      epoch_time.timestamp() as Timestamp, None, Some(extra));
         let block = Block::new(header, vec![]);
         ledger.add_genesis_block(&block);
-        ledger.load_genesis();
     }
 
     Ok(())
@@ -88,9 +87,72 @@ mod test {
         let block = Block::new(header, vec![]);
 
         ledger.add_genesis_block(&block);
-        ledger.load_genesis();
 
         assert_eq!(false, ledger.get_block_hash_by_height(0).is_none());
         assert_eq!(true, ledger.get_block_hash_by_height(1).is_none());
+    }
+
+    #[test]
+    fn t_back_block() {
+        let secret = Random.generate().unwrap();
+
+        let database = Database::open_default(&random_dir()).map_err(|err| err.to_string()).unwrap();
+        let schema = Schema::new(Arc::new(database));
+        let mut ledger = Ledger::new(
+            LastMeta::new_zero(),
+            LruCache::with_capacity(1 << 10),
+            LruCache::with_capacity(1 << 10),
+            vec![],
+            schema,
+        );
+
+        let mut header = Header::new(EMPTY_HASH, Address::from(10), EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
+                                     0, 0, 0, 10, 10,
+                                     192, None, Some(vec![12, 1]));
+        let block = Block::new(header, vec![]);
+
+        ledger.add_genesis_block(&block);
+        ledger.reload_meta();
+
+        (1_u64..10).for_each(|height|{
+            let mut header = Header::new(EMPTY_HASH, Address::from(10), EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
+                                         0, 0, height, 10, 10,
+                                         192, None, Some(vec![12, 1]));
+            let block = Block::new(header, vec![]);
+
+            ledger.add_block(&block);
+        });
+
+        (1_u64..10).for_each(|height|{
+            let block = ledger.get_block_by_height(height).unwrap();
+            let block1 = ledger.get_block(&block.hash()).unwrap();
+            println!("{:?}", block);
+            println!("|{:?}", block1);
+
+        });
+
+        let schema = ledger.get_schema();
+        for block in schema.blocks().iter() {
+            println!("{:?}", block);
+        }
+
+        println!("last_block {:?}", ledger.get_last_block());
+    }
+
+    #[test]
+    fn t_exists_db() {
+        let database = Database::open_default("/tmp/block/c1").map_err(|err| err.to_string()).unwrap();
+        let schema = Schema::new(Arc::new(database));
+        for key in schema.blocks().keys() {
+            println!("{:?}", key);
+        }
+
+        for block in schema.blocks().iter() {
+            println!("{:?}", block);
+        }
+        
+        for value in schema.blocks().values() {
+            println!("{:?}", value);
+        }
     }
 }
