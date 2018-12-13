@@ -1,12 +1,15 @@
 use ::actix::prelude::*;
 use actix_broker::BrokerIssue;
 
-use crate::types::block::{Header, Block};
+use crate::types::block::{Header, Block, Blocks};
+use crate::types::Height;
 
 #[derive(Message, Clone, Debug)]
 pub enum ChainEvent {
     NewBlock(Block),
     NewHeader(Header),
+    SyncBlock(Height),
+    PostBlock(Blocks),
 }
 
 // cross thread event
@@ -15,7 +18,7 @@ pub mod ChainEventCT {
     use super::ChainEvent;
     use crate::subscriber::impl_subscribe_handler;
 
-    impl_subscribe_handler!{ChainEvent}
+    impl_subscribe_handler! {ChainEvent}
 }
 
 pub enum SubscriberType {
@@ -69,8 +72,9 @@ use crate::protocol::GossipMessage;
 #[derive(Message, Clone, Debug)]
 pub enum BroadcastEvent {
     Transaction(Transaction),
-    Block(Block),
+    Blocks(Blocks),
     Consensus(GossipMessage),
+    Sync(Height),
 }
 
 pub struct BroadcastEventSubscriber {
@@ -152,7 +156,7 @@ mod test {
 
         fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) {
             println!("SubActor Received: {:?}", msg);
-           // self.issue_async(msg);
+            // self.issue_async(msg);
             Broker::issue_async(msg);
         }
     }

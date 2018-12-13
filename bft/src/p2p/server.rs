@@ -20,11 +20,13 @@ use libp2p::{
 use tokio::{timer::Delay, codec::FramedRead, io::AsyncRead, io::WriteHalf, net::TcpListener, net::TcpStream};
 use uuid::Uuid;
 use lru_time_cache::LruCache;
+use chrono::Local;
 
 use super::codec::MsgPacketCodec;
 use super::protocol::{BoundType, RawMessage, Header as RawHeader, P2PMsgCode, Payload, Handshake};
 use super::session::Session;
 use crate::{
+    types::block::Blocks,
     common::{multiaddr_to_ipv4, random_uuid},
     error::P2PError,
     subscriber::P2PEvent,
@@ -55,7 +57,6 @@ pub fn author_handshake(genesis: Hash) -> impl Fn(Handshake) -> bool {
 
 pub enum ServerEvent {
     Connected(PeerId, BoundType, Addr<Session>, RawMessage),
-    // handshake
     Disconnected(PeerId),
     Message(RawMessage),
 }
@@ -162,9 +163,15 @@ impl Handler<BroadcastEvent> for TcpServer {
                 let msg = RawMessage::new(header, payload);
                 self.broadcast(&msg);
             }
-            BroadcastEvent::Block(block) => {
+            BroadcastEvent::Blocks(blocks) => {
                 let header = RawHeader::new(P2PMsgCode::Block, 10, chrono::Local::now().timestamp_millis() as u64);
-                let payload = block.into_bytes();
+                let payload = blocks.into_bytes();
+                let msg = RawMessage::new(header, payload);
+                self.broadcast(&msg);
+            }
+            BroadcastEvent::Sync(height) => {
+                let header = RawHeader::new(P2PMsgCode::Sync, 10, chrono::Local::now().timestamp_millis() as u64);
+                let payload = height.into_bytes();
                 let msg = RawMessage::new(header, payload);
                 self.broadcast(&msg);
             }
@@ -182,9 +189,15 @@ impl Handler<ChainEvent> for TcpServer {
     fn handle(&mut self, msg: ChainEvent, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             ChainEvent::NewBlock(block) => {
-                ctx.notify(BroadcastEvent::Block(block));
+                ctx.notify(BroadcastEvent::Blocks(Blocks(vec![block])));
             }
             ChainEvent::NewHeader(_) => {}
+            ChainEvent::SyncBlock(height) => {
+                ctx.notify(BroadcastEvent::Sync(height))
+            }
+            ChainEvent::PostBlock(blocks) => {
+                ctx.notify(BroadcastEvent::Blocks(blocks))
+            }
         }
         ()
     }
@@ -206,8 +219,12 @@ impl Handler<ServerEvent> for TcpServer {
             // 接收端
             ServerEvent::Message(ref raw_msg) => {
                 let hash: Hash = raw_msg.hash();
+                let now = Local::now().timestamp_millis() as u64;
+                if now < raw_msg.header().create_time {
+                    trace!("Skip message({:?}) cause of timeout", hash.short());
+                }
                 if self.cache.get(&hash).is_some() {
-                    trace!("Skip message: {:?}", hash);
+                    trace!("Skip message({:?}) cause of received", hash.short());
                 } else {
                     (self.handles)(raw_msg.clone());
                 }
@@ -244,7 +261,7 @@ impl TcpServer {
         TcpServer::create(move |ctx| {
             ctx.set_mailbox_capacity(MAX_INBOUND_CONNECTION_MAILBOX);
             ctx.add_message_stream(lis.incoming().map_err(|_| ()).map(move |s| {
-                info!("New connection are comming");
+                trace!("New connection are comming");
                 TcpConnectInBound(s)
             }));
             TcpServer {
@@ -318,7 +335,7 @@ impl TcpServer {
 
     fn broadcast(&self, msg: &RawMessage) {
         for (peer, info) in &self.peers {
-            debug!("send a message to {:?}", peer);
+//            debug!("Broadcast message, code: {:?}, peer: {:?}", msg.header().code, peer.to_base58());
             info.pid.do_send(msg.clone());
         }
     }

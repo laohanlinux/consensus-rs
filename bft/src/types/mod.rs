@@ -39,6 +39,12 @@ pub struct ValidatorArray {
 implement_cryptohash_traits! {ValidatorArray}
 implement_storagevalue_traits! {ValidatorArray}
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HashesEntry(pub Vec<Hash>);
+
+implement_cryptohash_traits! {HashesEntry}
+implement_storagevalue_traits! {HashesEntry}
+
 impl ValidatorArray {
     pub fn new(addresses: Vec<Address>) -> ValidatorArray {
         let mut index: HashMap<Address, usize> = HashMap::new();

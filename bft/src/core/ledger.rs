@@ -8,7 +8,7 @@ use crate::{
     store::schema::Schema,
     types::block::{Block, Header},
     types::transaction::Transaction,
-    types::{Height, Validator, ValidatorArray},
+    types::{Height, Validator, ValidatorArray, HashesEntry},
 };
 
 pub struct LastMeta {
@@ -116,13 +116,22 @@ impl Ledger {
 
     pub fn get_block(&self, block_hash: &Hash) -> Option<Block> {
         let mut cache = self.block_cache.write();
+        let mut header_cache = self.header_cache.write();
         let block = cache.get(block_hash);
         match block {
             Some(block) => Some(block.clone()),
             None => {
-                if let Some(header) = self.schema.headers().get(block_hash) {
-                    let block = Block::new2(header, vec![]);
-                    cache.insert(*block_hash, block.clone());
+                let result = self.schema.headers().get(block_hash).map(|header| {
+                    let transaction_entry = self.schema.transaction_hashes().get(block_hash).unwrap();
+                    let transactions: Vec<Transaction> = transaction_entry.0.iter().map(|hash| {
+                        self.schema.transaction().get(hash).unwrap()
+                    }).collect();
+                    Block::new(header, transactions)
+                });
+
+                if let Some(block) = result {
+                    cache.insert(block_hash.clone(), block.clone());
+                    header_cache.insert(block_hash.clone(), block.header().clone());
                     Some(block)
                 } else {
                     None
@@ -144,15 +153,18 @@ impl Ledger {
     pub fn get_validators(&self, _height: Height) -> &Vec<Validator> { &self.validators }
 
     pub fn get_block_by_height(&self, height: Height) -> Option<Block> {
-        if let Some(hash) = self.schema.block_hash_by_height(height) {
-            if let Some(block) = self.block_cache.write().get(&hash) {
+        if let Some(block_hash) = self.schema.block_hash_by_height(height) {
+            if let Some(block) = self.block_cache.write().get(&block_hash) {
                 return Some(block.clone());
             }
 
-            if let Some(header) = self.schema.headers().get(&hash) {
-                return Some(Block::new2(header, vec![]));
-                // TODO add transations
-            }
+            return self.schema.headers().get(&block_hash).map(|header| {
+                let transaction_entry = self.schema.transaction_hashes().get(&block_hash).unwrap();
+                let transactions: Vec<Transaction> = transaction_entry.0.iter().map(|block_hash| {
+                    self.schema.transaction().get(&block_hash).unwrap()
+                }).collect();
+                Block::new(header, transactions)
+            });
         }
         None
     }
@@ -187,24 +199,30 @@ impl Ledger {
 
         // persists
         {
-            debug!("Write header");
+//            debug!("Write header");
             let mut header_db = self.schema.headers();
             header_db.put(&hash, header.clone());
         }
 
         // transactions
         {
+            let mut tx_hashes = HashesEntry(vec![]);
             let mut tx_db = self.schema.transaction();
-            debug!("Write transaction");
+//            debug!("Write transaction");
             for transaction in block.transactions() {
-                tx_db.put(&transaction.hash(), transaction.clone());
+                let tx_hash = transaction.hash();
+                tx_db.put(&tx_hash, transaction.clone());
+                tx_hashes.0.push(tx_hash);
             }
+
+            let mut tx_hashes_db = self.schema.transaction_hashes();
+            tx_hashes_db.put(&hash, tx_hashes);
         }
 
         // height
         {
             let mut height_db = self.schema.block_hashes_by_height();
-            debug!("Write height, hash:{:?}, height:{:?}", hash.short(), block.height());
+//            debug!("Write height, hash:{:?}, height:{:?}", hash.short(), block.height());
             height_db.push(hash.clone());
             assert_eq!(height_db.last().unwrap(), hash);
             assert_eq!(height_db.len(), block.height() + 1);

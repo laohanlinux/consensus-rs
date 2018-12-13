@@ -63,6 +63,7 @@ impl RawMessage {
 pub struct Header {
     pub code: P2PMsgCode,
     pub ttl: usize,
+    // millis
     pub create_time: u64,
 }
 

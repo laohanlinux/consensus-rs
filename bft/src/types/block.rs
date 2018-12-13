@@ -151,7 +151,11 @@ pub struct Block {
 implement_cryptohash_traits! {Block}
 implement_storagevalue_traits! {Block}
 
-pub type Blocks = Vec<Block>;
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Blocks(pub Vec<Block>);
+implement_cryptohash_traits! {Blocks}
+implement_storagevalue_traits! {Blocks}
+
 
 impl Block {
     pub fn new(header: Header, txs: Vec<Transaction>) -> Self {

@@ -17,7 +17,7 @@ use std::time::Instant;
 use std::sync::Arc;
 
 use super::{
-    request::HandlerRequst,
+    request::HandlerRequest,
     preprepare::HandlePreprepare,
     prepare::HandlePrepare,
     commit::HandleCommit,
@@ -40,7 +40,9 @@ use crate::{
     p2p::protocol::{RawMessage, P2PMsgCode, Payload},
     protocol::{GossipMessage, MessageType, State},
     types::Validator,
-    types::block::Block,
+    types::block::{Block, Blocks},
+    types::Height,
+    subscriber::events::ChainEvent,
 };
 
 pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(RawMessage) -> Result<(), String> {
@@ -58,9 +60,40 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
                 }).map_err(|err| panic!(err)));
             }
             P2PMsgCode::Block => {
-                let block = Block::from_bytes(Cow::from(&payload));
-                info!("Receive a new block from network, hash: {:?}, height: {:?}", block.hash(), block.height());
-                chain.insert_block(&block);
+                let blocks: Blocks = Blocks::from_bytes(Cow::from(&payload));
+                debug!("Receive a batch block from network, size:{:?}", blocks.0.len());
+                // TODO FIXME
+                blocks.0.iter().for_each(|block| {
+                    chain.insert_block(&block);
+                });
+            }
+            P2PMsgCode::Sync => {
+                let height = Height::from_bytes(Cow::from(&payload));
+                debug!("Receive a new sync event from network, height: {:?}", height);
+
+                let last_height = chain.get_last_height();
+                let mut total = 0;
+                let mut batch = 0;
+                let mut blocks = Blocks(vec![]);
+                for height in (height..last_height + 1) {
+                    if let Some(block) = chain.get_block_by_height(height) {
+                        blocks.0.push(block);
+                    }
+                    if batch > 100 {
+                        chain.post_event(ChainEvent::PostBlock(blocks.clone()));
+                        batch = 0;
+                        // FIXME
+                        blocks.0.clear();
+                    }
+                    if total > 500 {
+                        break;
+                    }
+                    batch += 1;
+                    total += 1;
+                }
+                if blocks.0.len() > 0 {
+                    chain.post_event(ChainEvent::PostBlock(blocks));
+                }
             }
             _ => unimplemented!()
         }
@@ -106,15 +139,13 @@ impl Actor for Core {
 }
 
 impl Handler<NewHeaderEvent> for Core {
-    type Result = ();
+    type Result = ConsensusResult;
 
     fn handle(&mut self, msg: NewHeaderEvent, _ctx: &mut Self::Context) -> Self::Result {
         debug!("Receive a new header event");
         let proposal = msg.proposal.clone();
         self.start_new_zero_round();
-        let result: ConsensusResult = <Core as HandlerRequst>::handle(self, &CSRequest::new(proposal));
-        assert_eq!(result.is_ok(), true);
-        ()
+        <Core as HandlerRequest>::handle(self, &CSRequest::new(proposal))
     }
 }
 
@@ -134,7 +165,17 @@ impl Handler<MessageEvent> for Core {
     fn handle(&mut self, msg: MessageEvent, _ctx: &mut Self::Context) -> Self::Result {
         let result = self.handle_message(&msg.payload);
         if let Err(ref err) = result {
-            error!("Failed to handle message, err: {:?}", err);
+            match err {
+                e @ ConsensusError::FutureBlockMessage => {
+                    debug!("Failed to handle message, err: {:?}", e)
+                }
+                e @ ConsensusError::FutureRoundMessage | e @ ConsensusError::FutureMessage | e @ ConsensusError::NotFromProposer => {
+                    debug!("Failed to handle message, err: {:?}", e)
+                }
+                other => {
+                    error!("Failed to handle message, err: {:?}", other)
+                }
+            }
         }
         result
     }
@@ -159,7 +200,7 @@ impl Handler<TimerEvent> for Core {
         let last_block = last_proposal.block();
         let cur_view = self.current_view();
         if last_block.height() >= cur_view.height {
-            info!("Round change timeout, catch up latest height");
+            debug!("Round change timeout, catch up latest height");
             self.stop_timer();
             self.wait_round_change = false;
         } else {
@@ -258,6 +299,9 @@ impl Core {
 
     // p2p message
     fn handle_message(&mut self, payload: &[u8]) -> ConsensusResult {
+        if self.val_set().size() == 0 {
+            return Ok(());
+        }
         let mut msg: GossipMessage = GossipMessage::from_bytes(Cow::from(payload));
         let address = msg.address().map_err(|err| ConsensusError::Unknown(err))?;
         debug!("Message from {}", msg.trace());
@@ -407,7 +451,7 @@ impl Core {
         self.set_state(State::AcceptRequest);
         // reset new round change timer
         self.new_round_change_timer();
-        info!("after start zero round");
+        debug!("after start zero round");
     }
 
     // has receive +2/3 round change
@@ -485,7 +529,7 @@ impl Core {
 
         // reset new round change timer
         self.new_round_change_timer();
-        info!(
+        debug!(
             "after start new round, new round: {}",
             self.current_state.round()
         );
@@ -573,7 +617,7 @@ impl Core {
 
     pub fn stop_round_change_timer(&mut self) {
         self.round_change_timer.try_send(Op::Stop);
-        info!("stop round change timer");
+        trace!("stop round change timer");
     }
 
     pub fn stop_timer(&mut self) {

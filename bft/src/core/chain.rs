@@ -25,7 +25,10 @@ pub struct Chain {
 
 impl Chain {
     pub fn new(config: Config, ledger: Arc<RwLock<Ledger>>) -> Self {
-        let subscriber = Actor::create(|_| ProcessSignals::new());
+        let subscriber = Actor::create(|ctx| {
+            ctx.set_mailbox_capacity(1024);
+            ProcessSignals::new()
+        });
         Chain {
             ledger,
             subscriber: subscriber,
@@ -37,13 +40,18 @@ impl Chain {
 
     pub fn insert_block(&self, block: &Block) -> ChainResult {
         self.lock.write();
-        info!("Ready insert a new block, hash: {}, height: {}", block.hash().short(), block.height());
+//        info!("Ready insert a new block, hash: {}, height: {}", block.hash().short(), block.height());
         {
             let mut ledger = self.ledger.write();
             if let Some(old_block) = ledger.get_block_by_height(block.height()) {
-                info!("{:#?}", old_block);
                 return Err(ChainError::Exists(block.hash()));
             }
+            let last_height = ledger.get_last_block_height();
+            if last_height + 1 < block.height() {
+                self.post_event(ChainEvent::SyncBlock(last_height + 1));
+                return Err(ChainError::Unknown("Not found ancestor".to_owned()));
+            }
+
             ledger.add_block(block);
         }
         self.subscriber.do_send(ChainEvent::NewBlock(block.clone()));
@@ -78,6 +86,14 @@ impl Chain {
 
     pub fn get_block_by_hash(&self, block_hash: &Hash) -> Option<Block> {
         self.ledger.read().get_block(block_hash)
+    }
+
+    pub fn get_block_by_height(&self, height: Height) -> Option<Block> {
+        if let Some(hash) = self.get_block_hash_by_height(height) {
+            self.get_block_by_hash(&hash)
+        } else {
+            None
+        }
     }
 
     pub fn get_transactions(&self) -> Vec<Transaction> {
@@ -141,6 +157,10 @@ impl Chain {
                 })
                 .map_err(|err| unimplemented!("{}", err)),
         );
+    }
+
+    pub fn post_event(&self, event: ChainEvent) {
+        self.subscriber.try_send(event);
     }
 }
 

@@ -1,8 +1,10 @@
 chain_id = 10
 ip = "127.0.0.1"
 port = 7694
-block_period = 10000 # ms
-request_time = 10000 # ms
+api_ip = "0.0.0.0"
+api_port = 8694
+block_period = 3000 # ms
+request_time = 5000 # ms
 peer_id = "QmVQVbmHE2BwFjeKx4eAKwGBtZ5348ufVUUR8jG2pa8uhG"
 ttl = 3000
 store = "/tmp/block/c4"

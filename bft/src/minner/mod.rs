@@ -56,7 +56,7 @@ impl Handler<ChainEvent> for Minner {
     fn handle(&mut self, msg: ChainEvent, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             ChainEvent::NewHeader(last_header) => {
-                info!("Receive a new header event notify, hash:{:?}, height: {:?}", last_header.block_hash(), last_header.height);
+                debug!("Receive a new header event notify, hash:{:?}, height: {:?}", last_header.block_hash(), last_header.height);
                 // stop current consensus
                 self.seal_tx.send(()).unwrap();
                 let seal = self.seal_rx.clone();
@@ -104,8 +104,9 @@ impl Minner {
 
         let pre_hash: Hash = pre_header.block_hash();
         let tx_hash = merkle_root_transactions(vec![coinbase.clone()]);
+        let extra = Vec::from("Coinse base");
 
-        let header = Header::new_mock(pre_hash, self.minter, tx_hash, pre_header.height + 1, next_time, None);
+        let header = Header::new_mock(pre_hash, self.minter, tx_hash, pre_header.height + 1, next_time, Some(extra));
         Block::new(header, vec![coinbase])
     }
 
@@ -128,7 +129,7 @@ impl Minner {
         let pre_timestamp = pre_header.time;
         let next_timestamp = pre_timestamp + self.chain.config.block_period.as_secs();
         let now_timestamp = chrono::Local::now().timestamp() as u64;
-        info!("now timestamp: {}, pre_timestamp: {}, next_timestamp: {}", now_timestamp, pre_timestamp, next_timestamp);
+        trace!("now timestamp: {}, pre_timestamp: {}, next_timestamp: {}", now_timestamp, pre_timestamp, next_timestamp);
         if now_timestamp > next_timestamp {
             return (now_timestamp, pre_header.clone());
         }

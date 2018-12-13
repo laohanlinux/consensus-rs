@@ -9,17 +9,17 @@ use crate::{
 use super::core::Core;
 use super::preprepare::HandlePreprepare;
 
-pub trait HandlerRequst {
+pub trait HandlerRequest {
     fn handle(&mut self, request: &Request<Proposal>) -> ConsensusResult;
     fn check_request_message(&self, request: &Request<Proposal>) ->ConsensusResult;
     fn accept(&mut self, request: &Request<Proposal>);
 }
 
-impl HandlerRequst for Core {
+impl HandlerRequest for Core {
     fn handle(&mut self, request: &Request<Proposal>) -> ConsensusResult {
-        assert_eq!(self.check_request_message(request).is_ok(), true);
+        self.check_request_message(request)?;
         assert_eq!(self.state, State::AcceptRequest);
-        <Core as HandlerRequst>::accept(self, request);
+        <Core as HandlerRequest>::accept(self, request);
         self.send_preprepare(request);
         Ok(())
     }

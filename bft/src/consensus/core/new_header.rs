@@ -10,7 +10,7 @@ use crate::{
 use super::{
     core::Core,
     commit::HandleCommit,
-    request::HandlerRequst,
+    request::HandlerRequest,
 };
 
 pub trait HandleNewHeader {
@@ -21,7 +21,6 @@ impl HandleNewHeader for Core {
     fn handle(&mut self, msg: &NewHeaderEvent, src: &Validator) -> ConsensusResult {
         // start new round, height = last_height + 1
         self.start_new_zero_round();
-        <Core as HandlerRequst>::handle(self, &Request::new(msg.proposal.clone()));
-        Ok(())
+        <Core as HandlerRequest>::handle(self, &Request::new(msg.proposal.clone()))
     }
 }

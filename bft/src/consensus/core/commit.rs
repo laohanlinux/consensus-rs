@@ -63,7 +63,7 @@ impl HandleCommit for Core {
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError> {
         debug!("Handle commit message from {:?}", src.address());
         let subject = Subject::from(msg.msg());
-        let _current_subject = self.current_state.subject().unwrap();
+//        let _current_subject = self.current_state.subject().unwrap();
         self.check_message(MessageType::Commit, &subject.view)?;
         let sender = msg.address;
         let subject = Subject::from_bytes(Cow::from(msg.msg()));

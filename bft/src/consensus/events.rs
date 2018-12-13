@@ -31,9 +31,13 @@ fn is_view<T: ?Sized + Any>(_s: &T) -> bool {
     TypeId::of::<View>() == TypeId::of::<T>()
 }
 
-#[derive(Debug, Message)]
+#[derive(Debug)]
 pub struct NewHeaderEvent {
     pub proposal: Proposal,
+}
+
+impl Message for NewHeaderEvent {
+    type Result = ConsensusResult;
 }
 
 #[derive(Debug)]
