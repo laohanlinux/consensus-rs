@@ -5,6 +5,7 @@ use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::ethkey::{KeyPair, Signature};
 use serde::{Deserialize, Serialize};
 use futures::Future;
+use tokio::timer::Delay;
 
 use std::any::{Any, TypeId};
 use std::borrow::Borrow;
@@ -52,9 +53,20 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
         match header.code {
             P2PMsgCode::Consensus => {
                 let request = core_pid.send(MessageEvent { payload: payload });
-                Arbiter::spawn(request.and_then(|result| {
+                let chain = chain.clone();
+                Arbiter::spawn(request.and_then(move |result| {
                     if let Err(err) = result {
-                        error!("Failed to handle message, err:{:?}", err);
+                        if let ConsensusError::FutureBlockMessage(height) = err {
+                            let chain = chain.clone();
+                            actix::spawn(Delay::new(Instant::now() + Duration::from_secs(1)).and_then(move |_| {
+                                let last_height = chain.get_last_height();
+                                if last_height < height {
+                                    chain.post_event(ChainEvent::SyncBlock(last_height + 1));
+                                }
+                                Ok(())
+                            }).map_err(|err| panic!(err)));
+                        }
+                        debug!("Failed to handle message, err:{:?}", err);
                     }
                     futures::future::ok(())
                 }).map_err(|err| panic!(err)));
@@ -79,13 +91,13 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
                     if let Some(block) = chain.get_block_by_height(height) {
                         blocks.0.push(block);
                     }
-                    if batch > 100 {
+                    if batch > 20 {
                         chain.post_event(ChainEvent::PostBlock(blocks.clone()));
                         batch = 0;
                         // FIXME
                         blocks.0.clear();
                     }
-                    if total > 500 {
+                    if total > 100 {
                         break;
                     }
                     batch += 1;
@@ -166,7 +178,7 @@ impl Handler<MessageEvent> for Core {
         let result = self.handle_message(&msg.payload);
         if let Err(ref err) = result {
             match err {
-                e @ ConsensusError::FutureBlockMessage => {
+                e @ ConsensusError::FutureBlockMessage(_) => {
                     debug!("Failed to handle message, err: {:?}", e)
                 }
                 e @ ConsensusError::FutureRoundMessage | e @ ConsensusError::FutureMessage | e @ ConsensusError::NotFromProposer => {
@@ -321,6 +333,7 @@ impl Core {
     }
 
     pub fn handle_check_message(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
+        debug!("Handle check message, {}", msg.trace());
         let result = match msg.code {
             MessageType::Preprepare => {
                 <Core as HandlePreprepare>::handle(self, msg, src)
@@ -359,7 +372,7 @@ impl Core {
         if code == MessageType::RoundChange {
             // check view
             if view.height > self.current_state.height() {
-                return Err(ConsensusError::FutureBlockMessage);
+                return Err(ConsensusError::FutureBlockMessage(view.height));
             } else if view.height < self.current_state.height() {
                 return Err(ConsensusError::OldMessage);
             }
@@ -367,7 +380,7 @@ impl Core {
         }
 
         if view.height > self.current_state.height() {
-            return Err(ConsensusError::FutureBlockMessage);
+            return Err(ConsensusError::FutureBlockMessage(view.height));
         }
         if view.height < self.current_state.height() {
             return Err(ConsensusError::OldMessage);
@@ -375,6 +388,7 @@ impl Core {
 
         if self.state == State::AcceptRequest {
             if code > MessageType::Preprepare {
+                debug!("--------------->");
                 return Err(ConsensusError::FutureMessage);
             }
             return Ok(());

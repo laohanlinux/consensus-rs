@@ -7,8 +7,9 @@ use cryptocurrency_kit::crypto::{CryptoHash, Hash, hash};
 use cryptocurrency_kit::storage::values::StorageValue;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize, Message)]
+#[derive(Debug, Clone, Deserialize, Serialize, Message, Eq, PartialEq)]
 pub enum P2PMsgCode {
+    Ping,
     Handshake,
     Transaction,
     Block,
@@ -65,14 +66,15 @@ pub struct Header {
     pub ttl: usize,
     // millis
     pub create_time: u64,
+    pub peer_id: Option<Vec<u8>>,
 }
 
 implement_cryptohash_traits! {Header}
 implement_storagevalue_traits! {Header}
 
 impl Header {
-    pub fn new(code: P2PMsgCode, ttl: usize, create_time: u64) -> Self {
-        Header { code: code, ttl: ttl, create_time: create_time }
+    pub fn new(code: P2PMsgCode, ttl: usize, create_time: u64, peer_id: Option<Vec<u8>>) -> Self {
+        Header { code: code, ttl: ttl, create_time: create_time, peer_id: peer_id }
     }
 }
 

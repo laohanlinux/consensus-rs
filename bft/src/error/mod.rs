@@ -18,6 +18,8 @@ pub enum P2PError {
     DumpConnected,
     #[fail(display = "Invalid Message type")]
     InvalidMessage,
+    #[fail(display = "Timeout")]
+    Timeout,
 }
 
 pub type ChainResult = Result<(), ChainError>;

@@ -47,10 +47,11 @@ pub fn create_consensus_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber:
     let (tx, rx) = ::std::sync::mpsc::channel();
     let core_backend = backend.clone();
     ::std::thread::spawn(move || {
-        actix::System::run(move || {
+        let core = actix::System::run(move || {
             let core_pid = Core::new(chain, core_backend, key_pair);
             tx.send(core_pid).unwrap();
         });
+        ::std::process::exit(core);
     });
     let core_pid = rx.recv().unwrap();
     backend.set_core_pid(core_pid.clone());

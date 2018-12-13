@@ -9,7 +9,8 @@ use crate::{
 type PreRCSignBytes = Vec<Vec<u8>>;
 
 pub struct RoundChangeSet<V: ValidatorSet> {
-    validator_set: V, // 当前所有轮次的validators
+    validator_set: V,
+    // 当前所有轮次的validators
     round_changes: HashMap<u64, MessageManage>,
     // 每个轮次的消息管理器
     pre_rc_sign_bytes: Option<PreRCSignBytes>, // 暂时未用
@@ -51,13 +52,25 @@ impl RoundChangeSet<ImplValidatorSet> {
     }
 
     // return the max round which the number of messages is equal or larger than num
-    pub fn max_round(&self, num: usize) -> Option<Round> {
+    pub fn max_round_more_than_n(&self, num: usize) -> Option<Round> {
         if let Some((round, _)) = self.round_changes.iter().max_by(|x, y| x.0.cmp(y.0)) {
             if self.round_changes.get(round).unwrap().len() >= num {
                 return Some(*round);
             }
         }
         None
+    }
+
+    pub fn max_round(&self) -> Round {
+        let mut max = 0;
+        let mut total = 0;
+        self.round_changes.iter().for_each(|x| {
+            if x.1.len() >= total && *x.0 > max {
+                max = *x.0;
+                total = x.1.len();
+            };
+        });
+        max
     }
 
     pub fn print_info(&self) {

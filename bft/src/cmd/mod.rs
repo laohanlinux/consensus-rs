@@ -85,9 +85,10 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
 
     // spawn new thread to handle mine
     ::std::thread::spawn(move || {
-        System::run(move || {
+        let code = System::run(move || {
             start_mint(&config, key_pair.clone(), chain.clone(), _tx_pool.clone(), engine);
         });
+        ::std::process::exit(code);
     });
 
     init_signal_handle();

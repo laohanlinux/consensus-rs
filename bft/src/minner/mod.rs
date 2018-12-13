@@ -20,7 +20,7 @@ use crate::{
     core::chain::Chain,
     core::tx_pool::{TxPool, SafeTxPool},
     consensus::consensus::{Engine, SafeEngine},
-    types::Timestamp,
+    types::{Height, Timestamp},
     types::block::{Block, Header},
     types::transaction::{Transaction, merkle_root_transactions},
 };
@@ -33,6 +33,7 @@ pub struct Minner {
     engine: Box<Engine>,
     seal_tx: Sender<()>,
     seal_rx: Receiver<()>,
+    mint_height: Height,
     worker: tokio_threadpool::ThreadPool,
 }
 
@@ -42,6 +43,7 @@ impl Actor for Minner {
     fn started(&mut self, ctx: &mut Self::Context) {
         self.subscribe_async::<ChainEvent>(ctx);
         info!("Start minner actor");
+        self.chain.post_event(ChainEvent::SyncBlock(self.chain.get_last_height() + 1));
         self.mine(self.seal_rx.clone());
     }
 
@@ -57,10 +59,12 @@ impl Handler<ChainEvent> for Minner {
         match msg {
             ChainEvent::NewHeader(last_header) => {
                 debug!("Receive a new header event notify, hash:{:?}, height: {:?}", last_header.block_hash(), last_header.height);
-                // stop current consensus
-                self.seal_tx.send(()).unwrap();
-                let seal = self.seal_rx.clone();
-                self.mine(seal);
+                if last_header.height >= self.mint_height {
+                    // stop current consensus
+                    self.seal_tx.send(()).unwrap();
+                    let seal = self.seal_rx.clone();
+                    self.mine(seal);
+                }
             }
             _ => {}
         }
@@ -83,6 +87,7 @@ impl Minner {
             engine,
             seal_tx: tx,
             seal_rx: rx,
+            mint_height: 0,
             worker: tokio_threadpool::ThreadPool::new(),
         }
     }
@@ -90,6 +95,7 @@ impl Minner {
     fn mine(&mut self, abort: Receiver<()>) {
         debug!("Ready to mine next block");
         let mut block = self.packet_next_block();
+        self.mint_height = block.height();
         match self.engine.seal(&mut block, abort) {
             Ok(_) => {}
             Err(err) => {

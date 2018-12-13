@@ -72,10 +72,11 @@ impl HandlePreprepare for Core {
                             self.send_commit_for_old_block(&preprepare.view, block.hash());
                         }
                 }
-                ConsensusError::FutureBlockMessage => {
-//                    self.new_round_future_preprepare_timer()
+                ConsensusError::FutureBlockMessage(_) => {
+                    // forward EngineError::FutureBlock to handle
+                    // self.new_round_future_preprepare_timer()
                 }
-                _ => return result,
+                _ => return result
             }
         }
 
@@ -93,7 +94,7 @@ impl HandlePreprepare for Core {
             match err {
                 EngineError::FutureBlock => {
                     self.new_round_future_preprepare_timer(d, msg.clone());
-                    return Err(ConsensusError::FutureBlockMessage);
+                    return Err(ConsensusError::FutureBlockMessage(preprepare.proposal.block().height()));
                 }
                 // other error
                 _ => {
