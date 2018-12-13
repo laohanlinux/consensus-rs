@@ -68,6 +68,7 @@ impl HandleCommit for Core {
         let sender = msg.address;
         let subject = Subject::from_bytes(Cow::from(msg.msg()));
         self.verify_commit(msg.commit_seal.as_ref(), &subject, sender, src.clone())?;
+        debug!("Pass very commit, commit size:{}, state:{:?}, {}", self.current_state.commits.len(), self.state, msg.trace());
         <Core as HandleCommit>::accept(self, msg, src)?;
         let val_set = self.val_set();
         // receive more +2/3 votes

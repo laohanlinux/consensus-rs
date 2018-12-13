@@ -1,10 +1,12 @@
 use std::sync::Arc;
+use std::collections::BTreeMap;
 
 use ::actix::prelude::*;
 use parking_lot::RwLock;
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::crypto::Hash;
 use futures::Future;
+use std::time::Instant;
 
 use crate::{
     config::Config,
@@ -20,6 +22,7 @@ pub struct Chain {
     subscriber: Addr<ProcessSignals>,
     genesis: Option<Block>,
     lock: RwLock<()>,
+    sync_limiter: RwLock<Instant>,
     pub config: Config,
 }
 
@@ -34,6 +37,7 @@ impl Chain {
             subscriber: subscriber,
             lock: RwLock::new(()),
             config,
+            sync_limiter: RwLock::new(Instant::now()),
             genesis: None,
         }
     }
@@ -56,6 +60,13 @@ impl Chain {
         }
         self.subscriber.do_send(ChainEvent::NewBlock(block.clone()));
         self.subscriber.do_send(ChainEvent::NewHeader(block.header().clone()));
+//        Arbiter::spawn(self.subscriber.send(ChainEvent::NewBlock(block.clone())).then(|result| {
+//            futures::future::ok::<(), ()>(())
+//        }).map_err(|err| panic!(err)));
+//
+//        Arbiter::spawn(self.subscriber.send(ChainEvent::NewHeader(block.header().clone())).then(|result| {
+//            futures::future::ok::<(), ()>(())
+//        }).map_err(|err| panic!(err)));
         Ok(())
     }
 
@@ -148,19 +159,19 @@ impl Chain {
 
     pub fn subscriber_event(&self, recipient: Recipient<ChainEvent>) {
         let message = SubscribeMessage::new_subScribe(recipient);
-        let request_fut = self.subscriber.send(message);
-        Arbiter::spawn(
-            request_fut
-                .and_then(|_result| {
-                    info!("Subsribe chain event successfully");
-                    futures::future::ok(())
-                })
-                .map_err(|err| unimplemented!("{}", err)),
-        );
+        self.subscriber.do_send(message);
     }
 
     pub fn post_event(&self, event: ChainEvent) {
-        self.subscriber.try_send(event);
+        if let ChainEvent::SyncBlock(height) = event {
+            let mut limiter = self.sync_limiter.write();
+            if Instant::now().duration_since(limiter.clone()).as_millis() > 50 {
+                self.subscriber.do_send(event);
+                *limiter = Instant::now();
+            }
+        } else {
+            self.subscriber.do_send(event);
+        }
     }
 }
 

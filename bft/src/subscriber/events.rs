@@ -4,6 +4,8 @@ use actix_broker::BrokerIssue;
 use crate::types::block::{Header, Block, Blocks};
 use crate::types::Height;
 
+pub const MAX_MAILBOX_CAPACITY: usize = 1 << 11;
+
 #[derive(Message, Clone, Debug)]
 pub enum ChainEvent {
     NewBlock(Block),
@@ -84,7 +86,8 @@ pub struct BroadcastEventSubscriber {
 impl Actor for BroadcastEventSubscriber {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
+        ctx.set_mailbox_capacity(MAX_MAILBOX_CAPACITY);
         info!("Broadcast event subscriber has started");
     }
 

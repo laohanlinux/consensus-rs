@@ -58,11 +58,20 @@ pub fn author_handshake(genesis: Hash) -> impl Fn(Handshake) -> bool {
 pub enum ServerEvent {
     Connected(PeerId, BoundType, Addr<Session>, RawMessage),
     Disconnected(PeerId),
-    Message(RawMessage),
+    Message(PeerId, RawMessage),
+    Ping(PeerId),
 }
 
 impl Message for ServerEvent {
     type Result = Result<PeerId, P2PError>;
+}
+
+pub enum SessionEvent {
+    Stop,
+}
+
+impl Message for SessionEvent {
+    type Result = ();
 }
 
 pub struct TcpServer {
@@ -114,14 +123,31 @@ impl Actor for TcpServer {
             self.node_info.0, self.node_info.1
         );
         self.subscribe_async::<BroadcastEvent>(ctx);
-//        ctx.run_interval(::std::time::Duration::from_secs(2), |act, _| {
-//            info!(
-//                "Connect clients: {}\nlocal-id:{}, \n{}",
-//                act.peers.len(),
-//                act.node_info.0.to_base58(),
-//                node_info(&act.peers)
-//            );
-//        });
+        ctx.run_interval(::std::time::Duration::from_secs(2), |act, _| {
+            debug!(
+                "Connect clients: {}\nlocal-id:{}, \n{}",
+                act.peers.len(),
+                act.node_info.0.to_base58(),
+                node_info(&act.peers)
+            );
+        });
+
+        ctx.run_interval(Duration::from_secs(3), |act, _| {
+            let mut peers = vec![];
+            act.peers.iter().for_each(|kv| {
+                let sub = chrono::Utc::now().timestamp() - kv.1.connect_time.timestamp();
+                if sub > 3 {
+                    peers.push(kv.0.clone());
+                }
+            });
+
+            for peer in peers {
+                debug!("Remove peer {}", peer.to_base58());
+                if let Some(connect_info) = act.peers.remove(&peer) {
+                    connect_info.pid.do_send(SessionEvent::Stop);
+                }
+            }
+        });
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
@@ -158,22 +184,24 @@ impl Handler<BroadcastEvent> for TcpServer {
         debug!("TcpServer[e:BroadcastEvent]");
         match msg {
             BroadcastEvent::Consensus(msg) => {
-                let header = RawHeader::new(P2PMsgCode::Consensus, 10, chrono::Local::now().timestamp_millis() as u64);
+                let header = RawHeader::new(P2PMsgCode::Consensus, 10, chrono::Local::now().timestamp_millis() as u64, None);
                 let payload = msg.into_payload();
                 let msg = RawMessage::new(header, payload);
                 self.broadcast(&msg);
             }
             BroadcastEvent::Blocks(blocks) => {
-                let header = RawHeader::new(P2PMsgCode::Block, 10, chrono::Local::now().timestamp_millis() as u64);
+                let header = RawHeader::new(P2PMsgCode::Block, 10, chrono::Local::now().timestamp_millis() as u64, None);
                 let payload = blocks.into_bytes();
                 let msg = RawMessage::new(header, payload);
                 self.broadcast(&msg);
             }
             BroadcastEvent::Sync(height) => {
-                let header = RawHeader::new(P2PMsgCode::Sync, 10, chrono::Local::now().timestamp_millis() as u64);
-                let payload = height.into_bytes();
-                let msg = RawMessage::new(header, payload);
-                self.broadcast(&msg);
+                self.peers.keys().take(1).for_each(|peer_id| {
+                    let header = RawHeader::new(P2PMsgCode::Sync, 10, chrono::Local::now().timestamp_millis() as u64, Some(peer_id.as_bytes().to_vec()));
+                    let payload = height.into_bytes();
+                    let msg = RawMessage::new(header, payload);
+                    self.broadcast(&msg);
+                });
             }
             _ => unimplemented!()
         }
@@ -208,25 +236,34 @@ impl Handler<ServerEvent> for TcpServer {
     fn handle(&mut self, msg: ServerEvent, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             ServerEvent::Connected(ref peer_id, ref bound_type, ref pid, ref raw_msg) => {
-                trace!("Connected peer: {:?}", peer_id);
+                debug!("Connected peer: {:?}", peer_id);
                 return self.handle_handshake(bound_type.clone(), pid.clone(), raw_msg.payload());
             }
             ServerEvent::Disconnected(ref peer_id) => {
-                trace!("Disconnected peer: {:?}", peer_id);
+                debug!("Disconnected peer: {:?}", peer_id);
                 self.peers.remove(&peer_id);
+                return Ok(peer_id.clone());
+            }
+            ServerEvent::Ping(ref peer_id) => {
+                let mut info = self.peers.get_mut(peer_id).unwrap();
+                info.connect_time = chrono::Utc::now();
+                return Ok(peer_id.clone());
             }
 
             // 接收端
-            ServerEvent::Message(ref raw_msg) => {
+            ServerEvent::Message(ref peer_id, ref raw_msg) => {
                 let hash: Hash = raw_msg.hash();
                 let now = Local::now().timestamp_millis() as u64;
                 if now < raw_msg.header().create_time {
                     trace!("Skip message({:?}) cause of timeout", hash.short());
+                    return Ok(peer_id.clone());
                 }
                 if self.cache.get(&hash).is_some() {
                     trace!("Skip message({:?}) cause of received", hash.short());
+                    return Ok(peer_id.clone());
                 } else {
                     (self.handles)(raw_msg.clone());
+                    return Ok(peer_id.clone());
                 }
             }
         }
@@ -334,9 +371,17 @@ impl TcpServer {
     }
 
     fn broadcast(&self, msg: &RawMessage) {
-        for (peer, info) in &self.peers {
-//            debug!("Broadcast message, code: {:?}, peer: {:?}", msg.header().code, peer.to_base58());
-            info.pid.do_send(msg.clone());
+        if let Some(ref peer) = msg.header().peer_id {
+            let peer = PeerId::from_bytes(peer.clone()).unwrap();
+            debug!("Broadcast message, code: {:?}, peer: {:?}", msg.header(), peer.to_base58());
+            if let Some(info) = self.peers.get(&peer) {
+                info.pid.do_send(msg.clone());
+            }
+        } else {
+            for (peer, info) in &self.peers {
+                debug!("Broadcast message, code: {:?}, peer: {:?}", msg.header(), peer.to_base58());
+                info.pid.do_send(msg.clone());
+            }
         }
     }
 }

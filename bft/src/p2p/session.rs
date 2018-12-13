@@ -16,7 +16,7 @@ use tokio::{codec::FramedRead, io::WriteHalf, net::TcpListener, net::TcpStream};
 
 use super::codec::MsgPacketCodec;
 use super::protocol::{BoundType, RawMessage, Header, P2PMsgCode, Handshake};
-use super::server::{ServerEvent, TcpServer};
+use super::server::{ServerEvent, SessionEvent, TcpServer};
 use crate::common::multiaddr_to_ipv4;
 use crate::error::P2PError;
 
@@ -44,6 +44,7 @@ impl Actor for Session {
                     P2PMsgCode::Handshake,
                     10,
                     chrono::Local::now().timestamp_nanos() as u64,
+                    None,
                 ),
                 handshake.into_bytes(),
             );
@@ -63,6 +64,15 @@ impl Actor for Session {
             );
             act.framed.close();
             ctx.stop();
+        });
+
+        ctx.run_interval(Duration::from_secs(1), |act, ctx| {
+            if act.handshaked {
+                let raw_msg = RawMessage::new(Header::new(
+                    P2PMsgCode::Ping, 3, chrono::Local::now().timestamp_millis() as u64, None),
+                                              vec![]);
+                ctx.notify(raw_msg);
+            }
         });
         trace!("P2P session created");
     }
@@ -88,7 +98,7 @@ impl actix::io::WriteHandler<io::Error> for Session {}
 /// receive raw message from network, forward it to server
 impl StreamHandler<RawMessage, io::Error> for Session {
     fn handle(&mut self, msg: RawMessage, ctx: &mut Context<Self>) {
-        trace!("Read message: {:?}", msg.header());
+        debug!("Read message: {:?}, local_id:{:?}, peer_id:{:?}", msg.header(), self.local_id.to_base58(), self.peer_id.to_base58());
         match msg.header().code {
             P2PMsgCode::Handshake => {
                 self.server
@@ -124,7 +134,25 @@ impl StreamHandler<RawMessage, io::Error> for Session {
             }
             P2PMsgCode::Transaction => {}
             P2PMsgCode::Block | P2PMsgCode::Consensus | P2PMsgCode::Sync => {
-                self.server.do_send(ServerEvent::Message(msg));
+                self.server.do_send(ServerEvent::Message(self.peer_id.clone(), msg));
+            }
+            P2PMsgCode::Ping => {
+                assert!(self.handshaked);
+                self.server
+                    .send(ServerEvent::Ping(self.peer_id.clone()))
+                    .into_actor(self)
+                    .then(|res, act, ctx| {
+                        match res {
+                            Ok(res) => {
+                                if res.is_err() {
+                                    ctx.stop();
+                                }
+                            }
+                            Err(err) => panic!(err),
+                        }
+                        actix::fut::ok(())
+                    })
+                    .wait(ctx);
             }
             _ => ctx.stop(),
         }
@@ -136,8 +164,17 @@ impl Handler<RawMessage> for Session {
     type Result = ();
 
     fn handle(&mut self, msg: RawMessage, _: &mut Context<Self>) {
-        trace!("Write message: {:?}", msg.header());
+        if msg.header().code != P2PMsgCode::Ping {
+            debug!("Write message: {:?}, local_id:{:?}, peer_id:{:?}", msg.header(), self.local_id.to_base58(), self.peer_id.to_base58());
+        }
         self.framed.write(msg);
+    }
+}
+
+impl Handler<SessionEvent> for Session {
+    type Result = ();
+    fn handle(&mut self, msg: SessionEvent, ctx: &mut Context<Self>) {
+        ctx.stop();
     }
 }
 

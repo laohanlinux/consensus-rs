@@ -378,20 +378,9 @@ impl Engine for ImplBackend {
         // send a new round event
         let core = self.core_pid.as_ref().unwrap().clone();
         let proposal = proposal.clone();
-
-        let request = core.send(NewHeaderEvent {
+        core.do_send(NewHeaderEvent {
             proposal: proposal.clone(),
         });
-        Arbiter::spawn(
-            request
-                .and_then(move |result| {
-                    if let Err(e) = result {
-                        error!("Failed to handle new heander event, err: {:?}", e);
-                    }
-                    futures::future::ok(())
-                })
-                .map_err(|err| panic!(err)),
-        );
         Ok(())
     }
 

@@ -17,7 +17,7 @@ pub enum ConsensusError {
     #[fail(display = "Future round message")]
     FutureRoundMessage,
     #[fail(display = "Future unit message")]
-    FutureBlockMessage,
+    FutureBlockMessage(Height),
     #[fail(display = "inconsistent subjects")]
     InconsistentSubject,
     #[fail(display = "Old message")]
