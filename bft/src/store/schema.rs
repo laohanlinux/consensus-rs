@@ -10,7 +10,7 @@ use super::list_index::ListIndex;
 use super::map_index::MapIndex;
 use crate::{
     types::block::{Block, Header},
-    types::{Validator, ValidatorArray, Bloom, Height, transaction::Transaction},
+    types::{Validator, ValidatorArray, HashesEntry, Bloom, Height, transaction::Transaction},
 };
 
 macro_rules! define_name {
@@ -24,7 +24,8 @@ macro_rules! define_name {
 }
 
 define_name!(
-    TRANSACTIONS => "transaction";
+    TRANSACTIONS => "transaction_hash";
+    TRANSACTIONS_HASH => "transaction_block";
     BLOCKS => "blocks";
     HEADERS => "headers";
     BLOCK_HASHES_BY_HEIGHT => "block_hashes_by_height";
@@ -54,9 +55,13 @@ impl Schema {
         MapIndex::new(TRANSACTIONS, self.db.clone())
     }
 
-//    pub fn blocks(&self) -> MapIndex<Hash, Block> {
-//        MapIndex::new(BLOCKS, self.db.clone())
-//    }
+    pub fn transaction_hashes(&self) -> MapIndex<Hash, HashesEntry> {
+        MapIndex::new(TRANSACTIONS_HASH, self.db.clone())
+    }
+
+    pub fn blocks(&self) -> MapIndex<Hash, Block> {
+        MapIndex::new(BLOCKS, self.db.clone())
+    }
 
     pub fn headers(&self) -> MapIndex<Hash, Header> {
         MapIndex::new(HEADERS, self.db.clone())
@@ -74,7 +79,6 @@ impl Schema {
         let hash = self.block_hashes_by_height()
             .last()
             .expect("An attempt to get the `last_block` during creating the genesis block .");
-//        self.blocks().get(&hash).unwrap()
         let header = self.headers().get(&hash).unwrap();
         Block::new2(header, vec![])
     }

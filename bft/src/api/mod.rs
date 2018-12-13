@@ -13,12 +13,11 @@ struct Context {
 fn blocks(req: &HttpRequest<Context>) -> impl Responder {
     let state: &Arc<Chain> = &req.state().chain;
     let last_height = state.get_last_height();
-    info!("last height {}", last_height);
-    let mut blocks: Blocks = Vec::new();
+    let mut blocks: Blocks = Blocks(vec![]);
     (0..last_height + 1).for_each(|height| {
         let block_hash = state.get_block_hash_by_height(height).unwrap();
         let block = state.get_block_by_hash(&block_hash).unwrap();
-        blocks.push(block);
+        blocks.0.push(block);
     });
     serde_json::to_string(&blocks).unwrap()
 }

@@ -30,12 +30,12 @@ impl Actor for Timer {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        info!("[{:?}]{}'s timer actor has started, du:{:?}", self.uuid.to_string(), self.name, self.interval.as_secs());
+        trace!("[{:?}]{}'s timer actor has started, du:{:?}", self.uuid.to_string(), self.name, self.interval.as_secs());
         ctx.notify_later(Op::Interval, self.interval);
     }
 
     fn stopped(&mut self, _: &mut Self::Context) {
-        info!("[{:?}]{}'s timer actor has stopped", self.uuid.to_string(), self.name);
+        trace!("[{:?}]{}'s timer actor has stopped", self.uuid.to_string(), self.name);
     }
 }
 

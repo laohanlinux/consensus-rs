@@ -63,7 +63,7 @@ impl HandleRoundChange for Core {
             .round_change_set
             .add(subject.view.round, msg.clone())
             .map_err(|err| ConsensusError::Unknown(err))?;
-        info!("round change votes size {:?}", n);
+        debug!("round change votes size {:?}", n);
 
         // check round change more detail
         if self.wait_round_change && n == current_val_set.fault() {

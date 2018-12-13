@@ -151,7 +151,7 @@ impl Backend for ImplBackend {
             if let Err(ref err) = result {
                 error!("Failed to send message");
             }
-            info!("Success to send message");
+            trace!("Success to send message");
             future::ok::<(), ()>(())
         }).map_err(|err| panic!(err)));
         self.broadcast_subscriber
@@ -189,7 +189,7 @@ impl Backend for ImplBackend {
             return Ok(());
         }
 
-        info!(
+        debug!(
             "Committed a new block, hash:{}, height:{}, proposer:{}",
             block.hash().short(),
             block.height(),
@@ -385,7 +385,9 @@ impl Engine for ImplBackend {
         Arbiter::spawn(
             request
                 .and_then(move |result| {
-                    info!("New heander event has handled");
+                    if let Err(e) = result {
+                        error!("Failed to handle new heander event, err: {:?}", e);
+                    }
                     futures::future::ok(())
                 })
                 .map_err(|err| panic!(err)),
@@ -394,7 +396,7 @@ impl Engine for ImplBackend {
     }
 
     fn prepare(&mut self, header: &mut Header) -> Result<(), String> {
-        info!(
+        debug!(
             "Excute prepare work, header, hash:{:?}, height:{:?}",
             header.block_hash(),
             header.height
@@ -518,7 +520,12 @@ impl Engine for ImplBackend {
 //                        chain.insert_block(&block);
                     }
                     Err(err) => {
-                        error!("Consensus fail, err:{:?}", err);
+                        match err {
+                            EngineError::Interrupt | EngineError::FutureBlock => {}
+                            other => {
+                                error!("Consensus fail, err:{:?}", other);
+                            }
+                        }
                     }
                 }
                 futures::future::ok::<(), String>(())
@@ -537,5 +544,5 @@ impl ImplBackend {
 }
 
 lazy_static! {
-    pub static ref worker: ThreadPool = ThreadPool::new();
+pub static ref worker: ThreadPool = ThreadPool::new();
 }
