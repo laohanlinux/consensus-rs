@@ -10,4 +10,4 @@ Cargo.lock
 **/*.rs.bk
 .idea
 bft/target/*
-parity-common
+parity-common/*
