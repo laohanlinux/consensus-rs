@@ -241,7 +241,7 @@ impl Ledger {
         // update last meta
         self.update_meta(block);
         let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(header.time as i64, 0), Utc);
-        info!("🔨🔨🔨Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, dt.to_rfc3339(), header.proposer);
+        info!("📝 Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, dt.to_rfc3339(), header.proposer);
     }
 
     pub fn add_validators(&mut self, validators: Vec<Validator>) {

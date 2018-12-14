@@ -61,7 +61,7 @@ impl DiscoverService {
                             for address in peer.addresses() {
                                 addresses.push(address.clone());
                             }
-                            trace!("Get a message from mDNS, local-id:{:?}, remote-id:{:?}", peer_id, id);
+//                            trace!("Get a message from mDNS, local-id:{:?}, remote-id:{:?}", peer_id, id);
                             // if the receiver actor's mailbox is full, ignore message
                             p2p_subscriber_clone.try_send(P2PEvent::AddPeer(id, addresses));
                         }
@@ -129,6 +129,7 @@ mod tests {
 
     #[test]
     fn t_discover_service() {
+        crate::logger::init_test_env_log();
         let system = System::new("test");
         let p2p_subscriber = spawn_sync_subscriber();
         let worker_pid = Worker::create(|_| Worker {});
@@ -153,6 +154,8 @@ mod tests {
             );
             mdns.push(pid);
         });
+
+        crate::util::TimerRuntime::new(Duration::from_secs(3));
 
         system.run();
     }

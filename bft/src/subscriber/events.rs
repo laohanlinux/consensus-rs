@@ -1,5 +1,6 @@
 use ::actix::prelude::*;
 use actix_broker::BrokerIssue;
+use libp2p::PeerId;
 
 use crate::types::block::{Header, Block, Blocks};
 use crate::types::Height;
@@ -11,7 +12,7 @@ pub enum ChainEvent {
     NewBlock(Block),
     NewHeader(Header),
     SyncBlock(Height),
-    PostBlock(Blocks),
+    PostBlock(Option<PeerId>, Blocks),
 }
 
 // cross thread event
@@ -74,7 +75,7 @@ use crate::protocol::GossipMessage;
 #[derive(Message, Clone, Debug)]
 pub enum BroadcastEvent {
     Transaction(Transaction),
-    Blocks(Blocks),
+    Blocks(Option<PeerId>, Blocks),
     Consensus(GossipMessage),
     Sync(Height),
 }

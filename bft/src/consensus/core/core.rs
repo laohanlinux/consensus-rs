@@ -6,6 +6,7 @@ use cryptocurrency_kit::ethkey::{KeyPair, Signature};
 use serde::{Deserialize, Serialize};
 use futures::Future;
 use tokio::timer::Delay;
+use libp2p::PeerId;
 
 use std::any::{Any, TypeId};
 use std::borrow::Borrow;
@@ -46,8 +47,8 @@ use crate::{
     subscriber::events::ChainEvent,
 };
 
-pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(RawMessage) -> Result<(), String> {
-    move |msg: RawMessage| {
+pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(PeerId, RawMessage) -> Result<(), String> {
+    move |peer_id: PeerId, msg: RawMessage| {
         let header = msg.header();
         let payload = msg.payload().to_vec();
         match header.code {
@@ -92,7 +93,7 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
                         blocks.0.push(block);
                     }
                     if batch > 20 {
-                        chain.post_event(ChainEvent::PostBlock(blocks.clone()));
+                        chain.post_event(ChainEvent::PostBlock(Some(peer_id.clone()), blocks.clone()));
                         batch = 0;
                         // FIXME
                         blocks.0.clear();
@@ -104,7 +105,7 @@ pub fn handle_msg_middle(core_pid: Addr<Core>, chain: Arc<Chain>) -> impl Fn(Raw
                     total += 1;
                 }
                 if blocks.0.len() > 0 {
-                    chain.post_event(ChainEvent::PostBlock(blocks));
+                    chain.post_event(ChainEvent::PostBlock(Some(peer_id.clone()), blocks));
                 }
             }
             _ => unimplemented!()

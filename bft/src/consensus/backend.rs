@@ -175,7 +175,7 @@ impl Backend for ImplBackend {
         if let Err(err) = result {
             match err {
                 ChainError::Exists(block_hash) => {
-                    warn!("Block hash exists. hash: {:?}", block_hash);
+                    trace!("Block hash exists. hash: {:?}", block_hash);
                 }
                 other => {
                     error!(
@@ -444,7 +444,7 @@ impl Engine for ImplBackend {
         };
 
         info!(
-            "Wait for the timestamp of header for ajustting the block period, hash:{:?}, height:{:?}, delay: {}",
+            "⛏️⛏️⛏️ Wait for the timestamp of header for ajustting the block period, hash:{:?}, height:{:?}, delay: {}s",
             header.block_hash().short(), header.height, delay);
         ::std::thread::sleep(Duration::from_secs(delay));
 

@@ -15,7 +15,7 @@ impl Actor for TimerRuntime {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        ctx.run_interval(self.timeout, |_act, _| {
+        ctx.run_later(self.timeout, |_act, _| {
             System::current().stop();
             ::std::process::exit(0);
         });
@@ -32,9 +32,13 @@ impl Handler<TimerOp> for TimerRuntime {
 impl TimerRuntime {
     pub fn new(timeout: Duration) -> Addr<TimerRuntime> {
         TimerRuntime::create(move |_ctx| {
-            TimerRuntime{
+            TimerRuntime {
                 timeout: timeout,
             }
         })
+    }
+
+    pub fn async_stop(pid: &Addr<TimerRuntime>) {
+        pid.do_send(TimerOp::Stop);
     }
 }

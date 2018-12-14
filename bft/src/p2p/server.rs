@@ -42,7 +42,7 @@ lazy_static! {
 }
 
 pub type AuthorFn = Fn(Handshake) -> bool;
-pub type HandleMsgFn = Fn(RawMessage) -> Result<(), String>;
+pub type HandleMsgFn = Fn(PeerId, RawMessage) -> Result<(), String>;
 
 pub type HandshakePacketFn = Fn() -> Handshake;
 
@@ -189,8 +189,11 @@ impl Handler<BroadcastEvent> for TcpServer {
                 let msg = RawMessage::new(header, payload);
                 self.broadcast(&msg);
             }
-            BroadcastEvent::Blocks(blocks) => {
-                let header = RawHeader::new(P2PMsgCode::Block, 10, chrono::Local::now().timestamp_millis() as u64, None);
+            BroadcastEvent::Blocks(peer_id, blocks) => {
+                let mut header = RawHeader::new(P2PMsgCode::Block, 10, chrono::Local::now().timestamp_millis() as u64, None);
+                if let Some(peer_id) = peer_id {
+                    header.peer_id = Some(peer_id.as_bytes().to_vec());
+                }
                 let payload = blocks.into_bytes();
                 let msg = RawMessage::new(header, payload);
                 self.broadcast(&msg);
@@ -217,14 +220,14 @@ impl Handler<ChainEvent> for TcpServer {
     fn handle(&mut self, msg: ChainEvent, ctx: &mut Self::Context) -> Self::Result {
         match msg {
             ChainEvent::NewBlock(block) => {
-                ctx.notify(BroadcastEvent::Blocks(Blocks(vec![block])));
+                ctx.notify(BroadcastEvent::Blocks(None, Blocks(vec![block])));
             }
             ChainEvent::NewHeader(_) => {}
             ChainEvent::SyncBlock(height) => {
                 ctx.notify(BroadcastEvent::Sync(height))
             }
-            ChainEvent::PostBlock(blocks) => {
-                ctx.notify(BroadcastEvent::Blocks(blocks))
+            ChainEvent::PostBlock(peer_id, blocks) => {
+                ctx.notify(BroadcastEvent::Blocks(peer_id, blocks))
             }
         }
         ()
@@ -262,7 +265,7 @@ impl Handler<ServerEvent> for TcpServer {
                     trace!("Skip message({:?}) cause of received", hash.short());
                     return Ok(peer_id.clone());
                 } else {
-                    (self.handles)(raw_msg.clone());
+                    (self.handles)(peer_id.clone(), raw_msg.clone());
                     return Ok(peer_id.clone());
                 }
             }
@@ -278,7 +281,7 @@ impl TcpServer {
         key: Option<secio::SecioKeyPair>,
         genesis: Hash,
         author: Box<Fn(Handshake) -> bool>,
-        handles: Box<Fn(RawMessage) -> Result<(), String>>,
+        handles: Box<Fn(PeerId, RawMessage) -> Result<(), String>>,
     ) -> Addr<TcpServer> {
         let mut addr: String = String::new();
         mul_addr.iter().for_each(|item| match &item {
