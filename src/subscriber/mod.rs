@@ -3,9 +3,7 @@ use ::actix::prelude::*;
 use libp2p::Multiaddr;
 use libp2p::PeerId;
 
-pub mod async_subscriber;
 pub mod events;
-pub mod cross_thread_events;
 
 use crate::types::block::{Block, Header};
 use super::*;

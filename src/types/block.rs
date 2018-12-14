@@ -33,7 +33,7 @@ pub struct Header {
     #[serde(default)]
     pub votes: Option<Votes>,
     #[serde(skip_serializing, skip_deserializing)]
-    hash_cache: Option<Hash>,
+    hash_cache: Option<Hash>, // use atomic pre instant of it
 }
 
 implement_cryptohash_traits! {Header}
@@ -74,13 +74,24 @@ impl Header {
     }
 
     pub fn block_hash(&self) -> Hash {
-        let mut header = self.clone();
-        header.votes = None;
-        <Header as CryptoHash>::hash(&header)
+        self.hash_cache.map_or_else(|| {
+            let mut header = self.clone();
+            header.votes = None;
+            <Header as CryptoHash>::hash(&header)
+        }, |hash| hash)
     }
 
     pub fn new_mock(pre_hash: Hash, proposer: Address, tx_hash: Hash, height: Height, tm: Timestamp, extra: Option<Vec<u8>>) -> Self {
         Self::new(pre_hash, proposer, EMPTY_HASH, tx_hash, EMPTY_HASH, 0, 0, height, 0, 0, tm, None, extra)
+    }
+
+    pub fn cache_hash(&mut self, block_hash: Option<Hash>) {
+        if let Some(block_hash) = block_hash {
+            self.hash_cache = Some(block_hash);
+        } else {
+            let block_hash = self.block_hash();
+            self.hash_cache = Some(block_hash);
+        }
     }
 
     pub fn zero_header() -> Header {

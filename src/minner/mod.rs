@@ -112,7 +112,8 @@ impl Minner {
         let tx_hash = merkle_root_transactions(vec![coinbase.clone()]);
         let extra = Vec::from("Coinse base");
 
-        let header = Header::new_mock(pre_hash, self.minter, tx_hash, pre_header.height + 1, next_time, Some(extra));
+        let mut header = Header::new_mock(pre_hash, self.minter, tx_hash, pre_header.height + 1, next_time, Some(extra));
+        header.cache_hash(None);
         Block::new(header, vec![coinbase])
     }
 
