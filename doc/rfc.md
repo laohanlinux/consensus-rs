@@ -188,4 +188,5 @@ fn randon_seed(blh: &Hash, _height: Height, vals: &Validators) -> u64 {
 
 - [Tendermint](https://github.com/tendermint/tendermint)
 - [Ont](https://github.com/ontio/ontology)
-- [Istanbul Byzantine Fault Tolerance
+- [Istanbul Byzantine Fault Tolerance](https://github.com/ethereum/EIPs/issues/650)
+
