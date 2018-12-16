@@ -24,7 +24,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub enum State {
     AcceptRequest = 1,
-    Preprepared,
+    PrePrepared,
     Prepared,
     Committed,
 }

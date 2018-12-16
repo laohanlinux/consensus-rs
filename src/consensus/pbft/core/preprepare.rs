@@ -116,7 +116,7 @@ impl HandlePreprepare for Core {
                 }
             } else {
                 <Core as HandlePreprepare>::accetp(self, &preprepare);
-                self.set_state(State::Preprepared);
+                self.set_state(State::PrePrepared);
                 self.send_prepare();
             }
         }

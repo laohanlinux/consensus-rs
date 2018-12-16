@@ -389,7 +389,6 @@ impl Core {
 
         if self.state == State::AcceptRequest {
             if code > MessageType::Preprepare {
-                debug!("--------------->");
                 return Err(ConsensusError::FutureMessage);
             }
             return Ok(());

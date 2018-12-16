@@ -10,5 +10,7 @@ Implement multiple blockchain consensus, including raft, pbft, paxos, dpos, powe
 ## start example
 
 ``` sh
-./build.sh
+# git submodule add --force https://github.com/laohanlinux/parity-common.git
+
+# ./build.sh
 ```

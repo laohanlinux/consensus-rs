@@ -82,8 +82,10 @@ impl HandleRoundChange for Core {
         debug!("round change, current_round:{}, round:{}, votes size {}", current_view.round, subject.view.round, n);
 
         // check round change more detail
+//        if n >= (current_val_set.two_thirds_majority() + 1)
+//            && (self.wait_round_change && current_view.round < subject.view.round) {
         if n >= (current_val_set.two_thirds_majority() + 1)
-            && (self.wait_round_change && current_view.round < subject.view.round) {
+            && (current_view.round < subject.view.round) {
             // 注意：假设节点刚起动，这时候，其wait_round_change 可能未false，这样即使收到了超过+2/3的票，如果采用
             //  n == (current_val_set.two_thirds_majority() + 1, 是有问题的
             // receive more than local round and +2/3 has vote it
