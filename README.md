@@ -14,3 +14,9 @@ Implement multiple blockchain consensus, including raft, pbft, paxos, dpos, powe
 
 # ./build.sh
 ```
+
+## RUN Docker
+
+``` sh
+docker build -t tt .
+```

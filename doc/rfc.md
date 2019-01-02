@@ -151,7 +151,7 @@ if n >= (current_val_set.two_thirds_majority() + 1)
 
 `Leader = validator[hash(pre_hash + round) % validators.size]`
 
-```
+```rust
 pub fn fn_selector(blh: &Hash, height: Height, round: u64, vals: &Validators) -> Validator {
     assert!(!vals.is_empty());
     let seed = (randon_seed(blh, height, vals) + round) % vals.len() as u64;

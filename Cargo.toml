@@ -51,5 +51,8 @@ tokio-signal = "0.2"
 [dependencies.libp2p]
 git = "https://github.com/laohanlinux/rust-libp2p.git"
 
+[profile.release]
+debug = true
+
 [dependencies.tap]
 git = "https://git.myrrlyn.net/myrrlyn/tap"
