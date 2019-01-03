@@ -63,21 +63,26 @@ impl HandleCommit for Core {
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError> {
         debug!("Handle commit message from {:?}", src.address());
         let subject = Subject::from(msg.msg());
-//        let _current_subject = self.current_state.subject().unwrap();
+        //        let _current_subject = self.current_state.subject().unwrap();
         self.check_message(MessageType::Commit, &subject.view)?;
         let sender = msg.address;
         let subject = Subject::from_bytes(Cow::from(msg.msg()));
         self.verify_commit(msg.commit_seal.as_ref(), &subject, sender, src.clone())?;
-        debug!("Pass very commit, commit size:{}, state:{:?}, {}", self.current_state.commits.len(), self.state, msg.trace());
+        debug!(
+            "Pass very commit, commit size:{}, state:{:?}, {}",
+            self.current_state.commits.len(),
+            self.state,
+            msg.trace()
+        );
         <Core as HandleCommit>::accept(self, msg, src)?;
         let val_set = self.val_set();
         // receive more +2/3 votes
         if self.current_state.commits.len() > val_set.two_thirds_majority()
             && self.state < State::Committed
-            {
-                self.current_state.lock_hash();
-                self.commit();
-            }
+        {
+            self.current_state.lock_hash();
+            self.commit();
+        }
         Ok(())
     }
 
@@ -102,11 +107,16 @@ impl HandleCommit for Core {
         let current_subject = current_state.subject().unwrap();
         if current_subject.digest != commit_subject.digest
             || current_subject.view != commit_subject.view
-            {
-                return Err(ConsensusError::Unknown(
-                    "Inconsistent subjects between commit and proposal".to_string(),
-                ));
-            }
+        {
+            warn!(
+                "Inconsistent subjects between commit and proposal, d1={}, d2={}",
+                current_subject.digest.short(),
+                commit_subject.digest.short()
+            );
+            //return Err(ConsensusError::Unknown(
+            //    "Inconsistent subjects between commit and proposal".to_string(),
+            //));
+        }
         Ok(())
     }
 

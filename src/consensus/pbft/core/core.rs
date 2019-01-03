@@ -182,7 +182,7 @@ impl Handler<MessageEvent> for Core {
                 e @ ConsensusError::FutureBlockMessage(_) => {
                     debug!("Failed to handle message, err: {:?}", e)
                 }
-                e @ ConsensusError::FutureRoundMessage | e @ ConsensusError::FutureMessage | e @ ConsensusError::NotFromProposer => {
+                e @ ConsensusError::OldMessage | e @ ConsensusError::FutureRoundMessage | e @ ConsensusError::FutureMessage | e @ ConsensusError::NotFromProposer => {
                     debug!("Failed to handle message, err: {:?}", e)
                 }
                 other => {
