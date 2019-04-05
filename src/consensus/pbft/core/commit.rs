@@ -17,6 +17,8 @@ use crate::{
 };
 
 use std::borrow::Cow;
+use ethereum_types::H256;
+use cryptocurrency_kit::common::to_fixed_array_32;
 
 pub trait HandleCommit {
     fn send_commit(&mut self);
@@ -97,7 +99,8 @@ impl HandleCommit for Core {
             return Err(ConsensusError::Unknown("commit seal is nil".to_string()));
         }
         let commit_seal = commit_seal.unwrap();
-        let sign_message = SignMessage::from(commit_subject.digest.as_ref());
+        let digest = H256::from(to_fixed_array_32(commit_subject.digest.as_ref()));
+        let sign_message = SignMessage::from(digest);
         verify_address(&sender, commit_seal, &sign_message)
             .map(|_| ())
             .map_err(|_| {

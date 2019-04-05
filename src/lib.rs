@@ -3,6 +3,7 @@
 #![feature(vec_remove_item)]
 #![feature(get_type_id)]
 #![feature(duration_as_u128)]
+#![feature(await_macro, futures_api, async_await)]
 
 extern crate serde;
 #[macro_use]

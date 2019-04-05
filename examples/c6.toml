@@ -1,19 +1,19 @@
 chain_id = 10
 ip = "127.0.0.1"
-port = 7691
+port = 7696
 api_ip = "0.0.0.0"
-api_port = 8691
+api_port = 8696
 block_period = 1000 # ms
 request_time = 5000 # ms
-peer_id = "QmbBr2fHwLFKvHkAq1BpbEr4dvR8P6orQxHkVaxeJsJiW8"
+peer_id = "QmZgaZTxwWRWHbH6sukyFWAaNwPKvZGX9m7epEHGBJHPvt"
 ttl = 3000
-store = "/tmp/block/c1"
-secret = "7f3b0a324e13e5358c3fd686737acd7adf2e5556084ec6d9e48b497082b7ef98"
+store = "/tmp/block/c6"
+secret = "ec84caf3d58e6bbcdcd6b243203fbaafee19e91048c61fe34e12fa7a93af27f9"
 
 [genesis]
 validator = ["0x7193d8f91724b39f10cc81e94934c187fa257277", "0x93908f59c6eff007d228398349214acb6b4ac9a4", "0x72d5c75fd6703414aa87f79b3e4797dd09cd9251", "0x58096d35c7a8ff67eba159f33cea7740fc9a737c","0xc759616c865d349ec2afced268fc6f33ff7414a4"]
 epoch_time = 2018-09-09T09:09:09.09-09:09
-proposer = "0x5701fbd05e77cac003a6894e4b2a3c12287ed313"
+proposer = "0x0701fbd05e77cac003a6894e4b2a3c12287ed313"
 gas_used = 10000
 extra = "Hello Word!"
     [genesis.accounts]

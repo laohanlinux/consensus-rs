@@ -56,6 +56,22 @@ impl<T> Request<T>
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BlockPart {
+    pub height: Height,
+    pub round: Round,
+}
+
+implement_cryptohash_traits! {BlockPart}
+implement_storagevalue_traits! {BlockPart}
+
+#[derive(Debug)]
+pub struct Part {
+    pub index: i8,
+    pub bytes: Vec<u8>,
+    pub cache: Option<Vec<u8>>,
+}
+
 #[derive(Default, Debug, Clone, Copy, Eq, Deserialize, Serialize)]
 pub struct View {
     pub round: Round,

@@ -158,7 +158,7 @@ impl Chain {
     }
 
     pub fn subscriber_event(&self, recipient: Recipient<ChainEvent>) {
-        let message = SubscribeMessage::new_subScribe(recipient);
+        let message = SubscribeMessage::new_subscribe(recipient);
         self.subscriber.do_send(message);
     }
 

@@ -107,6 +107,8 @@ impl Minner {
     fn packet_next_block(&self) -> Block {
         let (next_time, pre_header) = self.next_block();
         let coinbase = self.coinbase_transaction();
+//        let mut mock_transactions = generate_batch_transactions(self.key_pair.secret(), self.minter, self.chain.config.chain_id, 200);
+//        mock_transactions.push(coinbase);
 
         let pre_hash: Hash = pre_header.block_hash();
         let tx_hash = merkle_root_transactions(vec![coinbase.clone()]);
