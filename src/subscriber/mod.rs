@@ -32,11 +32,11 @@ macro_rules! impl_subscribe_handler {
         }
 
         impl SubscribeMessage {
-            pub fn new_subScribe(recipient: Recipient<$key>) -> Self {
+            pub fn new_subscribe(recipient: Recipient<$key>) -> Self {
                 SubscribeMessage::SubScribe(recipient)
             }
 
-            pub fn new_unsubScribe(recipient: Recipient<$key>) -> Self {
+            pub fn new_unsubscribe(recipient: Recipient<$key>) -> Self {
                 SubscribeMessage::UnSubScribe(recipient)
             }
         }

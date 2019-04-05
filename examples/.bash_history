@@ -1,0 +1,13 @@
+ls 
+cd
+ls
+exit
+ls
+cd
+ls
+exit
+cd
+ls
+./docker_start.sh 
+ls
+exit

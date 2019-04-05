@@ -15,6 +15,7 @@ pub const MAX_TXPOOL_SIZE: u64 = 10_000_000;
 pub const MAX_SLOT_SIZE: u32 = 1_000;
 
 pub trait TxPool {
+    fn len(&self) -> usize;
     fn get_tx(&self, tx_hash: &Hash) -> Option<&Transaction>;
     fn get_n_tx(&self, n: u64) -> Vec<&Transaction>;
     fn add_tx(&mut self, transaction: Transaction) -> Result<u64, TxPoolError>;
@@ -34,6 +35,10 @@ impl Actor for BaseTxPool {
 }
 
 impl TxPool for BaseTxPool {
+    fn len(&self) -> usize {
+        self.txs.len()
+    }
+
     fn get_tx(&self, tx_hash: &Hash) -> Option<&Transaction> {
         self.txs[self.get_idx(tx_hash)].get(tx_hash)
     }
@@ -46,6 +51,7 @@ impl TxPool for BaseTxPool {
                 break;
             }
             let idx = self.get_idx(tx_hash);
+
             let m = self.txs.get(idx).unwrap();
             txs.push(m.get(&tx_hash).unwrap());
         }

@@ -8,7 +8,7 @@ use chrono::Local;
 use chrono_humanize::HumanTime;
 use crossbeam::crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use crossbeam::scope;
-use cryptocurrency_kit::common::to_keccak;
+use cryptocurrency_kit::common::{to_keccak, to_fixed_array_32};
 use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::crypto::{CryptoHash, Hash, hash, EMPTY_HASH};
 use cryptocurrency_kit::ethkey::{
@@ -41,6 +41,7 @@ use crate::{
     types::block::{Block, Header},
     types::{Height, Validator, EMPTY_ADDRESS},
 };
+use ethereum_types::H256;
 
 pub trait Backend {
     type ValidatorsType;
@@ -55,8 +56,8 @@ pub trait Backend {
     /// verifies the proposal. If a err_future_block error is returned,
     /// the time difference of the proposal and current time is also returned.
     fn verify(&self, proposal: &Proposal) -> (Duration, Result<(), EngineError>);
-    fn sign(&self, digest: &[u8]) -> Result<Vec<u8>, String>;
-    fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<bool, ()>;
+    fn sign(&self, digest: &[u8; 32]) -> Result<Vec<u8>, String>;
+    fn check_signature(&self, data: &[u8; 32], address: Address, sig: &[u8]) -> Result<bool, ()>;
 
     fn last_proposal(&self) -> Result<Proposal, ()>;
     fn has_proposal(&self, hash: &Hash, height: Height) -> bool;
@@ -242,7 +243,7 @@ impl Backend for ImplBackend {
     }
 
     /// TODO
-    fn sign(&self, digest: &[u8]) -> Result<Vec<u8>, String> {
+    fn sign(&self, digest: &[u8; 32]) -> Result<Vec<u8>, String> {
         let message = Message::from(digest);
         match sign(&self.key_pair.secret(), &message) {
             Ok(signature) => Ok(signature.to_vec()),
@@ -251,10 +252,10 @@ impl Backend for ImplBackend {
     }
 
     /// TODO
-    fn check_signature(&self, data: &[u8], address: Address, sig: &[u8]) -> Result<bool, ()> {
-        let keccak_hash = hash(data);
+    fn check_signature(&self, data: &[u8; 32], address: Address, sig: &[u8]) -> Result<bool, ()> {
+        let keccak_hash = H256::from(to_fixed_array_32(hash(data).as_ref()));
         let signature = Signature::from_slice(sig);
-        verify_address(&address, &signature, &Message::from(keccak_hash.as_ref())).map_err(|_| ())
+        verify_address(&address, &signature, &Message::from(keccak_hash)).map_err(|_| ())
     }
 
     fn last_proposal(&self) -> Result<Proposal, ()> {
@@ -350,9 +351,9 @@ impl Engine for ImplBackend {
             if votes.verify_signs(CryptoHash::hash(header), |validator| {
                 self.validator_set.get_by_address(validator).is_some()
             }) == false
-                {
-                    return Err(EngineError::InvalidSignature);
-                }
+            {
+                return Err(EngineError::InvalidSignature);
+            }
             let maj32 = self.validator_set.two_thirds_majority();
             if maj32 + 1 > votes.len() {
                 return Err(EngineError::LackVotes(maj32 + 1, votes.len()));
@@ -495,7 +496,6 @@ impl Engine for ImplBackend {
                     }
                 }
 
-                println!("Running on the pool");
                 futures::future::err(EngineError::Interrupt)
             }),
             &tx,
