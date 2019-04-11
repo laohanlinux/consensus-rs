@@ -33,7 +33,6 @@ define_name!(
     PRECOMMITS => "precommits";
     CONFIGS => "configs";
     CONSENSUS_MESSAGE_CACHE => "consensus_message_cache";
-    CONSENSUS_ROUND => "consensus_round";
     VALIDATORS => "validators";
 );
 

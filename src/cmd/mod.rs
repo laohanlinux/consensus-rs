@@ -214,7 +214,7 @@ fn init_api(config: &Config, chain: Arc<Chain>) {
     let chain = chain.clone();
     spawn(move || {
         info!("Start service api");
-        start_api(chain, format!("{}:{}", config.api_ip, config.api_port));
+        start_api(chain, config.api_ip, config.api_port);
     });
 }
 
