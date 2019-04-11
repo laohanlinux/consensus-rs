@@ -34,7 +34,6 @@ priority-queue = "0.5.2"
 evmap = "4.0.0"
 actix = "0.7"
 actix-broker = "0.1.6"
-actix-web = "0.7.14"
 actix-web-async-await = "0.1.0"
 failure = "0.1.3"
 futures = "0.1"
@@ -48,6 +47,8 @@ parking_lot = {version = "0.6", features = ["nightly"]}
 uuid = { version = "0.7", features = ["v5"] }
 flame = "0.2.2"
 tokio-signal = "0.2"
+tide = "0.0.5"
+http = "0.1"
 
 [dependencies.libp2p]
 git = "https://github.com/laohanlinux/rust-libp2p.git"
