@@ -1,4 +1,4 @@
-# consensus-rs
+# consensus-rs [![Build Status](https://travis-ci.org/laohanlinux/consensus-rs.svg?branch=master)](https://travis-ci.org/laohanlinux/consensus-rs)
 Implement multiple blockchain consensus, including raft, pbft, paxos, dpos, power
 
 - [x] pbft
