@@ -1,7 +1,7 @@
 language: rust
 
 rust:
-    - nightly
+    - nightly-2019-04-07
 
 script:
     - git submodule add --force https://github.com/laohanlinux/parity-common.git
