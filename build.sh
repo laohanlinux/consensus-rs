@@ -1,5 +1,8 @@
 #!/bin/bash
 
+version="nightly-2019-04-07"
+rustup override set $version
+
 pkill bft
 
 cargo build --example bft
