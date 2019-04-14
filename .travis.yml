@@ -4,5 +4,6 @@ rust:
     - nightly
 
 script:
+    - git submodule add --force https://github.com/laohanlinux/parity-common.git
     - cargo build --verbose --all
     - cargo test --verbose --all
