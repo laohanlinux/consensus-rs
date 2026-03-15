@@ -1,0 +1,28 @@
+[package]
+name = "cryptocurrency-kit"
+version = "0.1.0"
+edition = "2024"
+authors = ["Rg <daimaldd@gmail.com>"]
+
+[dependencies]
+serde = "1.0.10"
+serde_derive = "1.0.10"
+serde_json = "1.0.2"
+bincode = "1.3"
+failure = "0.1.1"
+hex = { git = "https://github.com/KokaKiwi/rust-hex.git"}
+sha3 = "0.7.3"
+byteorder = { version = "1", default-features = false }
+chrono = { version = "0.4.5", features = ["serde"] }
+uuid = { version = "0.6.0", features = ["serde"] }
+rmp = "*"
+rmp-serde  = "*"
+keccak-hash = "*"
+ethereum-types = "0.5.2"
+parity-secp256k1 = { git = "https://github.com/paritytech/rust-secp256k1" }
+lazy_static = "1.0"
+rand = "0.7"
+tiny-keccak = "1.4"
+rustc-hex = "2.0.1"
+parity-crypto = "*"
+rust_decimal = "*"
