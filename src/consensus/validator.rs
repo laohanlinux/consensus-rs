@@ -1,7 +1,6 @@
 use bigint::U128;
 use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::ethkey::Address;
-use ethereum_types::H160;
 
 use crate::types::{Height, Validator};
 
@@ -133,9 +132,11 @@ impl ValidatorSet for ImplValidatorSet {
     }
 
     fn remove_validator(&mut self, address: Address) -> bool {
-        match self.validators.remove_item(&Validator::new(address)) {
-            None => false,
-            _ => true,
+        if let Some(pos) = self.validators.iter().position(|v| v == &Validator::new(address)) {
+            self.validators.remove(pos);
+            true
+        } else {
+            false
         }
     }
 

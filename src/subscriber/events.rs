@@ -1,13 +1,14 @@
-use ::actix::prelude::*;
-use actix_broker::BrokerIssue;
+//! Event types and buses (replaces actix-broker)
+
 use libp2p::PeerId;
 
-use crate::types::block::{Header, Block, Blocks};
+use crate::types::block::{Block, Blocks, Header};
 use crate::types::Height;
 
 pub const MAX_MAILBOX_CAPACITY: usize = 1 << 11;
 
-#[derive(Message, Clone, Debug)]
+/// Chain events
+#[derive(Clone, Debug)]
 pub enum ChainEvent {
     NewBlock(Block),
     NewHeader(Header),
@@ -15,64 +16,32 @@ pub enum ChainEvent {
     PostBlock(Option<PeerId>, Blocks),
 }
 
-// cross thread event
-pub mod ChainEventCT {
-    use ::actix::prelude::*;
-    use super::ChainEvent;
-    use crate::subscriber::impl_subscribe_handler;
-
-    impl_subscribe_handler! {ChainEvent}
+/// Chain event bus - replaces ProcessSignals for ChainEvent
+#[derive(Clone)]
+pub struct ChainEventBus {
+    tx: tokio::sync::broadcast::Sender<ChainEvent>,
 }
 
-pub enum SubscriberType {
-    Async,
-    Sync,
-}
-
-pub struct ChainEventSubscriber {
-    subscriber_type: SubscriberType,
-}
-
-impl Actor for ChainEventSubscriber {
-    type Context = Context<Self>;
-
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("Chain event subscriber has started");
+impl ChainEventBus {
+    pub fn new(capacity: usize) -> Self {
+        let (tx, _) = tokio::sync::broadcast::channel(capacity);
+        Self { tx }
     }
 
-    fn stopped(&mut self, _ctx: &mut Self::Context) {
-        info!("Chain event subscriber has stopped");
+    pub fn send(&self, event: ChainEvent) {
+        let _ = self.tx.send(event);
+    }
+
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<ChainEvent> {
+        self.tx.subscribe()
     }
 }
-
-impl Handler<ChainEvent> for ChainEventSubscriber {
-    type Result = ();
-
-    fn handle(&mut self, msg: ChainEvent, ctx: &mut Self::Context) -> Self::Result {
-        match self.subscriber_type {
-            SubscriberType::Async => {
-                self.issue_async(msg);
-            }
-            SubscriberType::Sync => {
-                self.issue_sync(msg, ctx);
-            }
-        }
-    }
-}
-
-impl ChainEventSubscriber {
-    pub fn new(subscriber_type: SubscriberType) -> Self {
-        ChainEventSubscriber {
-            subscriber_type: subscriber_type,
-        }
-    }
-}
-
 
 use crate::types::transaction::Transaction;
 use crate::protocol::GossipMessage;
 
-#[derive(Message, Clone, Debug)]
+/// Broadcast events (consensus, blocks, sync)
+#[derive(Clone, Debug)]
 pub enum BroadcastEvent {
     Transaction(Transaction),
     Blocks(Option<PeerId>, Blocks),
@@ -80,114 +49,23 @@ pub enum BroadcastEvent {
     Sync(Height),
 }
 
-pub struct BroadcastEventSubscriber {
-    subscriber_type: SubscriberType,
+/// Broadcast event bus - replaces BroadcastEventSubscriber
+#[derive(Clone)]
+pub struct BroadcastEventBus {
+    tx: tokio::sync::broadcast::Sender<BroadcastEvent>,
 }
 
-impl Actor for BroadcastEventSubscriber {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.set_mailbox_capacity(MAX_MAILBOX_CAPACITY);
-        info!("Broadcast event subscriber has started");
+impl BroadcastEventBus {
+    pub fn new(capacity: usize) -> Self {
+        let (tx, _) = tokio::sync::broadcast::channel(capacity);
+        Self { tx }
     }
 
-    fn stopped(&mut self, _ctx: &mut Self::Context) {
-        info!("Broadcast event subscriber has stopped");
-    }
-}
-
-impl Handler<BroadcastEvent> for BroadcastEventSubscriber {
-    type Result = ();
-
-    fn handle(&mut self, msg: BroadcastEvent, ctx: &mut Self::Context) -> Self::Result {
-        debug!("BroadcastEventSubscriber[e:BroadcastEvent]");
-        match self.subscriber_type {
-            SubscriberType::Async => {
-                self.issue_async(msg);
-            }
-            SubscriberType::Sync => {
-                self.issue_sync(msg, ctx);
-            }
-        }
-    }
-}
-
-impl BroadcastEventSubscriber {
-    pub fn new(subscriber_type: SubscriberType) -> Self {
-        BroadcastEventSubscriber {
-            subscriber_type: subscriber_type,
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use actix_broker::BrokerSubscribe;
-    use actix_broker::Broker;
-
-    struct ProActor {
-        name: String,
+    pub fn send(&self, event: BroadcastEvent) {
+        let _ = self.tx.send(event);
     }
 
-    impl Actor for ProActor {
-        type Context = Context<Self>;
-
-        fn started(&mut self, ctx: &mut Self::Context) {
-            self.subscribe_async::<BroadcastEvent>(ctx);
-        }
-    }
-
-    impl Handler<BroadcastEvent> for ProActor {
-        type Result = ();
-
-        fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) {
-            println!("ProActor[{}] Received: {:?}", self.name, msg);
-        }
-    }
-
-    struct SubActor {}
-
-    impl Actor for SubActor {
-        type Context = Context<Self>;
-
-        fn started(&mut self, ctx: &mut Self::Context) {}
-    }
-
-    impl Handler<BroadcastEvent> for SubActor {
-        type Result = ();
-
-        fn handle(&mut self, msg: BroadcastEvent, _ctx: &mut Self::Context) {
-            println!("SubActor Received: {:?}", msg);
-            // self.issue_async(msg);
-            Broker::issue_async(msg);
-        }
-    }
-
-    #[test]
-    fn t_async_actor() {
-        use crate::protocol::{GossipMessage, MessageType};
-        crate::logger::init_test_env_log();
-        let pro = ProActor { name: "Same thread".to_owned() }.start();
-
-        ::std::thread::spawn(move || {
-            System::run(move || {
-                let pro = ProActor { name: "Cross thread".to_owned() }.start();
-            });
-        });
-
-        // customer
-//        let sub = BroadcastEventSubscriber { subscriber_type: SubscriberType::Async }.start();
-        let sub = SubActor {}.start();
-
-        ::std::thread::spawn(move || {
-            while true {
-                sub.do_send(BroadcastEvent::Consensus(GossipMessage::new(MessageType::RoundChange, vec![], None)));
-                ::std::thread::sleep(::std::time::Duration::from_secs(2));
-            }
-        });
-
-        crate::pprof::spawn_signal_handler(*crate::common::random_dir());
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<BroadcastEvent> {
+        self.tx.subscribe()
     }
 }

@@ -1,46 +1,39 @@
 use std::fs::File;
-use std::io::{self, prelude::*};
+use std::io::prelude::*;
 use std::str::FromStr;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::thread::{spawn, JoinHandle};
-use std::time::Duration;
+use std::thread::spawn;
 
-use ::actix::prelude::*;
-use cryptocurrency_kit::crypto::Hash;
-use cryptocurrency_kit::ethkey::{Generator, KeyPair, Secret, Random};
-use futures::Future;
+use cryptocurrency_kit::ethkey::{KeyPair, Secret};
 use kvdb_rocksdb::Database;
-use libp2p::{Multiaddr, PeerId};
 use lru_time_cache::LruCache;
 use parking_lot::RwLock;
 
 use crate::{
     common,
     config::Config,
-    consensus::pbft::core::core::{Core, handle_msg_middle},
     consensus::consensus::{create_bft_engine, SafeEngine},
+    consensus::pbft::core::core::handle_msg_middle,
     core::chain::Chain,
     core::ledger::{LastMeta, Ledger},
-    core::tx_pool::{BaseTxPool, TxPool, SafeTxPool},
+    core::tx_pool::{BaseTxPool, SafeTxPool},
     error::ChainResult,
     logger::init_log,
-    minner::Minner,
+    minner::start_minner,
     p2p::{
-        protocol::Payload,
         discover_service::DiscoverService,
         server::{author_handshake, TcpServer},
         spawn_sync_subscriber,
     },
     pprof::spawn_signal_handler,
     store::schema::Schema,
-    subscriber::events::{BroadcastEventSubscriber, ChainEventSubscriber, SubscriberType},
-    subscriber::*,
+    subscriber::events::BroadcastEventBus,
     types::Validator,
     api::start_api,
 };
 
-pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
+pub fn start_node(config: &str, _sender: Sender<()>) -> Result<(), String> {
     print_art();
     init_log();
     let result = init_config(config);
@@ -57,89 +50,100 @@ pub fn start_node(config: &str, sender: Sender<()>) -> Result<(), String> {
 
     // init genesis
     init_genesis(&mut chain).map_err(|err| format!("{}", err))?;
-    let genesis = chain.get_genesis().clone();
     info!("Genesis hash: {:?}", chain.get_genesis().hash());
 
     // init transaction pool
-    let _tx_pool = Arc::new(RwLock::new(init_transaction_pool(&config)));
+    let tx_pool = Arc::new(RwLock::new(init_transaction_pool(&config)));
 
     let chain = Arc::new(chain);
 
     init_api(&config, chain.clone());
 
-    let broadcast_subscriber = BroadcastEventSubscriber::new(SubscriberType::Async).start();
+    let broadcast_bus = BroadcastEventBus::new(1024);
 
-    let (core_pid, engine) = start_consensus_engine(
+    let (core_handle, mut engine) = start_consensus_engine(
         &config,
         key_pair.clone(),
         chain.clone(),
-        broadcast_subscriber.clone(),
+        broadcast_bus.clone(),
     );
+    engine.start()?;
 
     let config_clone = config.clone();
     {
-        let p2p_event_notify = init_p2p_event_notify();
-        let _discover_pid = init_p2p_service(p2p_event_notify.clone(), &config_clone);
-        init_tcp_server(chain.clone(), p2p_event_notify.clone(), genesis.hash(), core_pid.clone(), &config_clone);
+        let p2p_event_bus = spawn_sync_subscriber();
+        let p2p_event_bus_for_discover = p2p_event_bus.clone();
+        std::thread::spawn(move || {
+            DiscoverService::run_discover_service(
+                p2p_event_bus_for_discover,
+                libp2p::PeerId::from_str(&config_clone.peer_id).unwrap(),
+                libp2p::Multiaddr::from_str(&format!("/ip4/{}/tcp/0", config_clone.ip)).unwrap(),
+                config_clone.ttl,
+            );
+        });
+        let genesis = chain.get_genesis().hash();
+        let mut p2p_rx = p2p_event_bus.subscribe();
+        let (server, _handle) = TcpServer::new(
+            libp2p::PeerId::from_str(&config.peer_id).unwrap(),
+            libp2p::Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap(),
+            None,
+            genesis,
+            Box::new(author_handshake(genesis)),
+            Box::new(handle_msg_middle(core_handle.clone(), chain.clone())),
+        );
+        let local_peer_id = libp2p::PeerId::from_str(&config.peer_id).unwrap();
+        for bp in &config.bootstrap_peers {
+            if let (Ok(peer_id), Ok(multiaddr)) = (
+                libp2p::PeerId::from_str(&bp.peer_id),
+                libp2p::Multiaddr::from_str(&bp.multiaddr),
+            ) {
+                if peer_id != local_peer_id {
+                    p2p_event_bus.send(crate::subscriber::P2PEvent::AddPeer(peer_id, vec![multiaddr]));
+                }
+            }
+        }
+        let chain_bus = chain.chain_event_bus();
+        let mut chain_rx = chain_bus.subscribe();
+        let server_for_chain = server.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("runtime");
+            rt.block_on(async {
+                while let Ok(event) = chain_rx.recv().await {
+                    server_for_chain.handle_chain_event(event);
+                }
+            });
+        });
+        let mut broadcast_rx = broadcast_bus.subscribe();
+        let server_for_broadcast = server.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("runtime");
+            rt.block_on(async {
+                while let Ok(event) = broadcast_rx.recv().await {
+                    server_for_broadcast.handle_broadcast_event(event);
+                }
+            });
+        });
+        let server_for_p2p = server.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("runtime");
+            rt.block_on(async {
+                while let Ok(event) = p2p_rx.recv().await {
+                    match event {
+                        crate::subscriber::P2PEvent::AddPeer(peer_id, addrs) => server_for_p2p.add_peer(peer_id, addrs),
+                        crate::subscriber::P2PEvent::DropPeer(_, _) => {}
+                    }
+                }
+            });
+        });
     }
 
-    // spawn new thread to handle mine
-    ::std::thread::spawn(move || {
-        let code = System::run(move || {
-            start_mint(&config, key_pair.clone(), chain.clone(), _tx_pool.clone(), engine);
-        });
-        ::std::process::exit(code);
+    // spawn thread for mining
+    std::thread::spawn(move || {
+        start_minner(&config, key_pair.clone(), chain.clone(), tx_pool.clone(), engine);
     });
 
     init_signal_handle();
     Ok(())
-}
-
-fn init_p2p_event_notify() -> Addr<ProcessSignals> {
-    info!("Init p2p event nofity");
-    spawn_sync_subscriber()
-}
-
-fn init_p2p_service(
-    p2p_subscriber: Addr<ProcessSignals>,
-    config: &Config,
-) -> Addr<DiscoverService> {
-    let peer_id = PeerId::from_str(&config.peer_id).unwrap();
-    let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
-    let discover_service =
-        DiscoverService::spawn_discover_service(p2p_subscriber, peer_id, mul_addr, config.ttl);
-    info!("Init p2p service successfully");
-    discover_service
-}
-
-fn init_tcp_server(chain: Arc<Chain>, p2p_subscriber: Addr<ProcessSignals>, genesis: Hash, core_pid: Addr<Core>, config: &Config) {
-    let peer_id = PeerId::from_str(&config.peer_id).unwrap();
-    let mul_addr = Multiaddr::from_str(&format!("/ip4/{}/tcp/{}", config.ip, config.port)).unwrap();
-    let author = author_handshake(genesis.clone());
-    let h1 = Box::new(handle_msg_middle(core_pid, chain.clone()));
-    let server = TcpServer::new(peer_id, mul_addr, None, genesis.clone(), Box::new(author), h1);
-
-    // subscriber p2p event, sync operation
-    {
-        let recipient = server.clone().recipient();
-        // register
-        let message = SubscribeMessage::SubScribe(recipient);
-        let request_fut = p2p_subscriber.send(message);
-        Arbiter::spawn(
-            request_fut
-                .and_then(|_result| {
-                    info!("Subsribe p2p discover event successfully");
-                    futures::future::ok(())
-                })
-                .map_err(|err| unimplemented!("{}", err)),
-        );
-    }
-
-    // subscriber chain event, async operation
-    {
-        chain.subscriber_event(server.clone().recipient());
-    }
-    info!("Init tcp server successfully");
 }
 
 fn init_config(config: &str) -> Result<Config, String> {
@@ -165,7 +169,8 @@ fn init_store(config: &Config) -> Result<Ledger, String> {
         validators.push(Validator::new(common::string_to_address(validator)?));
     }
 
-    let database = Database::open_default(&config.store).map_err(|err| err.to_string())?;
+    let database = Database::open(&crate::store::schema::database_config(), &config.store)
+        .map_err(|err| err.to_string())?;
     let schema = Schema::new(Arc::new(database));
     Ok(Ledger::new(
         LastMeta::new_zero(),
@@ -185,28 +190,10 @@ fn start_consensus_engine(
     _config: &Config,
     key_pair: KeyPair,
     chain: Arc<Chain>,
-    subscriber: Addr<BroadcastEventSubscriber>,
-) -> (Addr<Core>, SafeEngine) {
+    broadcast_bus: BroadcastEventBus,
+) -> (crate::consensus::pbft::core::runner::CoreHandle, SafeEngine) {
     info!("Init consensus engine");
-    let mut result = create_bft_engine(key_pair, chain, subscriber);
-    result.1.start().unwrap();
-    result
-}
-
-fn start_mint(
-    config: &Config,
-    key_pair: KeyPair,
-    chain: Arc<Chain>,
-    txpool: Arc<RwLock<SafeTxPool>>,
-    engine: SafeEngine,
-) -> Addr<Minner> {
-    let minter = key_pair.address();
-    Minner::create(move |ctx| {
-        let recipient = ctx.address().recipient();
-        chain.subscriber_event(recipient);
-        let (tx, rx) = crossbeam::channel::bounded(1);
-        Minner::new(minter, key_pair, chain, txpool, engine, tx, rx)
-    })
+    create_bft_engine(key_pair, chain, broadcast_bus)
 }
 
 fn init_api(config: &Config, chain: Arc<Chain>) {

@@ -1,6 +1,8 @@
-use log::Level;
 
 pub fn init_log() {
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info,libp2p_mdns::behaviour::iface=off");
+    }
     env_logger::init();
     info!("👊 logger init successfully");
 }

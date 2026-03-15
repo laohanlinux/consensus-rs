@@ -1,10 +1,9 @@
 use cryptocurrency_kit::crypto::{Hash, EMPTY_HASH};
-use cryptocurrency_kit::storage::values::StorageValue;
 
 use crate::{
-    consensus::validator::{ValidatorSet, ImplValidatorSet},
+    consensus::validator::ImplValidatorSet,
     consensus::types::{PrePrepare, Proposal, Request, Round, Subject, View},
-    protocol::{GossipMessage, MessageManage, MessageType},
+    protocol::MessageManage,
     types::Height,
 };
 
@@ -32,11 +31,11 @@ impl RoundState
         RoundState {
             round: view.round,
             height: view.height,
-            preprepare: preprepare,
-            prepares: MessageManage::new(view.clone(), vals.clone()),
-            commits: MessageManage::new(view.clone(), vals.clone()),
-            pending_request: pending_request,
-            lock_hash: lock_hash,
+            preprepare,
+            prepares: MessageManage::new(view, vals.clone()),
+            commits: MessageManage::new(view, vals.clone()),
+            pending_request,
+            lock_hash,
         }
     }
 
@@ -52,9 +51,7 @@ impl RoundState
     }
 
     pub(crate) fn subject(&self) -> Option<Subject> {
-        if self.preprepare.is_none() {
-            return None;
-        }
+        self.preprepare.as_ref()?;
         Some(Subject {
             view: View {
                 round: self.round,
@@ -76,6 +73,7 @@ impl RoundState
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_round(&mut self, round: Round) {
         self.round = round;
     }
@@ -84,6 +82,7 @@ impl RoundState
         self.round
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_height(&mut self, height: Height) {
         self.height = height;
     }
@@ -110,10 +109,11 @@ impl RoundState
     }
 
     // 解锁提案
+    #[allow(dead_code)]
     pub(crate) fn unlock_hash(&mut self) {
         trace!(
             "Unlock proposal, hash:{}",
-            self.lock_hash.as_ref().or_else(|| Some(&EMPTY_HASH)).unwrap().short()
+            self.lock_hash.as_ref().unwrap_or(&EMPTY_HASH).short()
         );
         self.lock_hash = None;
     }

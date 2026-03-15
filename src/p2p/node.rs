@@ -1,24 +1,8 @@
-use ::actix::prelude::*;
+// Node - simplified, no longer an actix Actor
+// Combines TcpServer and DiscoverService
 
-use super::{
-    server::{TcpServer, ServerEvent},
-    discover_service::DiscoverService,
-};
+use super::server::TcpServer;
 
 pub struct Node {
-    server: Addr<TcpServer>,
-    discover_service: Addr<DiscoverService>,
-}
-
-
-impl Actor for Node {
-    type Context = Context<Self>;
-
-    fn started(&mut self, _ctx: &mut Self::Context) {
-        info!("Node actor has started");
-    }
-
-    fn stopped(&mut self, _ctx: &mut Self::Context) {
-        info!("Node actor has stopped");
-    }
+    pub server: TcpServer,
 }

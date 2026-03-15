@@ -1,12 +1,14 @@
 use byteorder::WriteBytesExt;
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, HASH_SIZE};
+use cryptocurrency_kit::crypto::{hash, Hash, HASH_SIZE};
 use cryptocurrency_kit::ethkey::Secret;
 use cryptocurrency_kit::ethkey::{public_to_address, recover_bytes};
-use cryptocurrency_kit::ethkey::{Address, Public, Signature};
+use cryptocurrency_kit::ethkey::{Address, Signature};
 
-use crate::protocol::{GossipMessage, MessageType};
+use crate::protocol::MessageType;
 
+#[allow(dead_code)]
 const SIGN_OP_OFFSET: usize = 0;
+#[allow(dead_code)]
 const SIGN_ROUND_OFFSET: usize = 1;
 const SIGN_PACKET_SIZE: usize = 9;
 
@@ -32,7 +34,7 @@ impl Votes {
     }
 
     pub fn add_vote(&mut self, vote: &Signature) -> bool {
-        let ok = self.0.iter().any(|e_vote| *e_vote == *vote);
+        let ok = self.0.contains(vote);
         if ok {
             return ok;
         }
@@ -41,7 +43,7 @@ impl Votes {
     }
 
     pub fn remove_vote(&mut self, vote: &Signature) -> bool {
-        self.0.remove_item(&vote).is_some()
+        self.0.iter().position(|v| v == vote).map(|i| self.0.remove(i)).is_some()
     }
 
     pub fn votes(&self) -> &Vec<Signature> {
@@ -54,11 +56,11 @@ impl Votes {
     {
         self.0.iter().all(
             |signature| {
-                match decrypt_commit_bytes(digest.as_ref(), &signature) {
+                match decrypt_commit_bytes(digest.as_ref(), signature) {
                     Ok(address) => {
                         author(address)
                     }
-                    Err(_) => return false,
+                    Err(_) => false,
                 }
             },
         )
@@ -83,10 +85,10 @@ pub fn decrypt_commit_bytes<T: AsRef<[u8]>>(
     match recover_bytes(signture, digest.as_ref()) {
         Ok(ref public) => {
             let address = public_to_address(public);
-            return Ok(address);
+            Ok(address)
         }
         Err(_) => {
-            return Err("recover commit sign failed".to_string());
+            Err("recover commit sign failed".to_string())
         }
     }
 }

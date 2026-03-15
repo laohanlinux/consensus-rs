@@ -1,9 +1,4 @@
-#![feature(custom_attribute)]
-#![feature(nll)]
-#![feature(vec_remove_item)]
-#![feature(get_type_id)]
-#![feature(duration_as_u128)]
-#![feature(await_macro, futures_api, async_await)]
+#![allow(unused_imports)]
 
 extern crate serde;
 #[macro_use]
@@ -12,16 +7,11 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate serde_millis;
 #[macro_use]
-extern crate runtime_fmt;
-#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate ethereum_types;
 #[macro_use]
 extern crate cryptocurrency_kit;
-#[macro_use]
-extern crate actix;
-extern crate actix_broker;
 #[macro_use]
 extern crate crossbeam;
 #[macro_use]

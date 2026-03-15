@@ -1,25 +1,22 @@
 use std::sync::Arc;
-use std::collections::BTreeMap;
+use std::time::Instant;
 
-use ::actix::prelude::*;
 use parking_lot::RwLock;
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::crypto::Hash;
-use futures::Future;
-use std::time::Instant;
 
 use crate::{
     config::Config,
     error::{ChainError, ChainResult},
-    types::{Height, Validators, ValidatorArray, Validator, transaction::Transaction, block::Block, block::Header},
-    subscriber::events::{ChainEvent, ChainEventCT::ProcessSignals, ChainEventCT::SubscribeMessage},
+    types::{Height, Validators, Validator, transaction::Transaction, block::Block, block::Header},
+    subscriber::events::{ChainEvent, ChainEventBus},
 };
 use super::genesis::store_genesis_block;
 use super::ledger::Ledger;
 
 pub struct Chain {
     ledger: Arc<RwLock<Ledger>>,
-    subscriber: Addr<ProcessSignals>,
+    chain_event_bus: ChainEventBus,
     genesis: Option<Block>,
     lock: RwLock<()>,
     sync_limiter: RwLock<Instant>,
@@ -28,13 +25,9 @@ pub struct Chain {
 
 impl Chain {
     pub fn new(config: Config, ledger: Arc<RwLock<Ledger>>) -> Self {
-        let subscriber = Actor::create(|ctx| {
-            ctx.set_mailbox_capacity(1024);
-            ProcessSignals::new()
-        });
         Chain {
             ledger,
-            subscriber: subscriber,
+            chain_event_bus: ChainEventBus::new(1024),
             lock: RwLock::new(()),
             config,
             sync_limiter: RwLock::new(Instant::now()),
@@ -44,10 +37,9 @@ impl Chain {
 
     pub fn insert_block(&self, block: &Block) -> ChainResult {
         self.lock.write();
-//        info!("Ready insert a new block, hash: {}, height: {}", block.hash().short(), block.height());
         {
             let mut ledger = self.ledger.write();
-            if let Some(old_block) = ledger.get_block_by_height(block.height()) {
+            if ledger.get_block_by_height(block.height()).is_some() {
                 return Err(ChainError::Exists(block.hash()));
             }
             let last_height = ledger.get_last_block_height();
@@ -58,15 +50,8 @@ impl Chain {
 
             ledger.add_block(block);
         }
-        self.subscriber.do_send(ChainEvent::NewBlock(block.clone()));
-        self.subscriber.do_send(ChainEvent::NewHeader(block.header().clone()));
-//        Arbiter::spawn(self.subscriber.send(ChainEvent::NewBlock(block.clone())).then(|result| {
-//            futures::future::ok::<(), ()>(())
-//        }).map_err(|err| panic!(err)));
-//
-//        Arbiter::spawn(self.subscriber.send(ChainEvent::NewHeader(block.header().clone())).then(|result| {
-//            futures::future::ok::<(), ()>(())
-//        }).map_err(|err| panic!(err)));
+        self.chain_event_bus.send(ChainEvent::NewBlock(block.clone()));
+        self.chain_event_bus.send(ChainEvent::NewHeader(block.header().clone()));
         Ok(())
     }
 
@@ -74,8 +59,8 @@ impl Chain {
         info!("Ready insert a new block, hash: {}, height: {}", block.hash().short(), block.height());
         {
             let mut ledger = ledger.write();
-            if let Some(old_block) = ledger.get_block_by_height(block.height()) {
-                info!("{:#?}", old_block);
+            if ledger.get_block_by_height(block.height()).is_some() {
+                info!("{:#?}", block);
                 return Err(ChainError::Exists(block.hash()));
             }
             ledger.add_block(block);
@@ -88,7 +73,7 @@ impl Chain {
     }
 
     pub fn get_last_height(&self) -> Height {
-        self.ledger.read().get_last_block_height().clone()
+        *self.ledger.read().get_last_block_height()
     }
 
     pub fn get_last_block(&self) -> Block {
@@ -120,7 +105,7 @@ impl Chain {
     }
 
     pub fn get_last_hash(&self) -> Hash {
-        self.ledger.read().get_last_block_hash().clone()
+        *self.ledger.read().get_last_block_hash()
     }
 
     pub fn add_validators(&self, _height: Height, validators: Vec<Address>) -> ChainResult {
@@ -129,7 +114,6 @@ impl Chain {
         Ok(())
     }
 
-    // FIXME: Opz avoid to copy validator memory
     pub fn get_validators(&self, height: Height) -> Validators {
         let ledger = self.ledger.write();
         ledger.get_validators(height).clone()
@@ -153,24 +137,20 @@ impl Chain {
         result
     }
 
-    pub fn get_subscriber(&self) -> Addr<ProcessSignals> {
-        self.subscriber.clone()
-    }
-
-    pub fn subscriber_event(&self, recipient: Recipient<ChainEvent>) {
-        let message = SubscribeMessage::new_subscribe(recipient);
-        self.subscriber.do_send(message);
+    /// Returns the chain event bus for subscribing to chain events
+    pub fn chain_event_bus(&self) -> ChainEventBus {
+        self.chain_event_bus.clone()
     }
 
     pub fn post_event(&self, event: ChainEvent) {
-        if let ChainEvent::SyncBlock(height) = event {
+        if let ChainEvent::SyncBlock(_) = event {
             let mut limiter = self.sync_limiter.write();
-            if Instant::now().duration_since(limiter.clone()).as_millis() > 50 {
-                self.subscriber.do_send(event);
+            if Instant::now().duration_since(*limiter).as_millis() > 50 {
+                self.chain_event_bus.send(event);
                 *limiter = Instant::now();
             }
         } else {
-            self.subscriber.do_send(event);
+            self.chain_event_bus.send(event);
         }
     }
 }
@@ -191,9 +171,9 @@ mod test {
 
     #[test]
     fn t_batch() {
-        let secret = Random.generate().unwrap();
+        let _secret = Random.generate().unwrap();
 
-        let database = Database::open_default(&random_dir()).map_err(|err| err.to_string()).unwrap();
+        let database = Database::open(&crate::store::schema::database_config(), &random_dir()).map_err(|err| err.to_string()).unwrap();
         let schema = Schema::new(Arc::new(database));
         let mut ledger = Ledger::new(
             LastMeta::new_zero(),
@@ -229,11 +209,6 @@ mod test {
             println!("{:?}", block);
             println!("|{:?}", block1);
         });
-
-//        let schema = ledger.get_schema();
-//        for block in schema.blocks().iter() {
-//            println!("{:?}", block);
-//        }
 
         println!("last_block {:?}", ledger.get_last_block());
     }

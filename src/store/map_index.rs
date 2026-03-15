@@ -78,19 +78,19 @@ where
         self.base.contains(key)
     }
 
-    pub fn iter(&self) -> MapIndexIter<K, V> {
+    pub fn iter(&self) -> MapIndexIter<'_, K, V> {
         MapIndexIter {
             base_iter: self.base.iter(&()),
         }
     }
 
-    pub fn keys(&self) -> MapIndexKeys<K> {
+    pub fn keys(&self) -> MapIndexKeys<'_, K> {
         MapIndexKeys {
             base_iter: self.base.iter(&()),
         }
     }
 
-    pub fn values(&self) -> MapIndexValues<V> {
+    pub fn values(&self) -> MapIndexValues<'_, V> {
         MapIndexValues {
             base_iter: self.base.iter(&()),
         }
@@ -151,7 +151,7 @@ mod tests {
     const IDX_NAME: &'static str = "idx_name_";
 
     fn newdb() -> Database {
-        Database::open_default(&random_dir()).unwrap()
+        Database::open(&kvdb_rocksdb::DatabaseConfig::with_columns(Some(1)), &random_dir()).unwrap()
     }
 
     #[test]

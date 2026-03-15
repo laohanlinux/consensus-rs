@@ -1,18 +1,13 @@
 use std::sync::Arc;
 use std::str::FromStr;
-use std::str::Utf8Error;
 
-use serde::{Serialize, Serializer, Deserialize, Deserializer};
-use ethereum_types::H160;
 use parking_lot::RwLock;
 
-use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::crypto::EMPTY_HASH;
 
 use crate::{
-    types::{Timestamp, Gas, Difficulty, Height, EMPTY_ADDRESS},
+    types::Timestamp,
     types::block::{Block, Header},
-    types::votes::{decrypt_commit_bytes, encrypt_commit_bytes, Votes},
     types::{Validator, Validators},
     config::GenesisConfig,
     common,
@@ -48,7 +43,7 @@ pub(crate) fn store_genesis_block(genesis_config: &GenesisConfig, ledger: Arc<Rw
         }.map_err(|err: ParseError| err.to_string())?;
 
         let extra = genesis_config.extra.as_bytes().to_vec();
-        let mut header = Header::new(EMPTY_HASH, proposer, EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
+        let header = Header::new(EMPTY_HASH, proposer, EMPTY_HASH, EMPTY_HASH, EMPTY_HASH,
                                      0, 0, 0, genesis_config.gas_used + 10, genesis_config.gas_used,
                                      epoch_time.timestamp() as Timestamp, None, Some(extra));
         let block = Block::new(header, vec![]);
@@ -72,7 +67,7 @@ mod test {
     fn t_genesis_block() {
         let secret = Random.generate().unwrap();
 
-        let database = Database::open_default(&random_dir()).map_err(|err| err.to_string()).unwrap();
+        let database = Database::open(&crate::store::schema::database_config(), &random_dir()).map_err(|err| err.to_string()).unwrap();
         let schema = Schema::new(Arc::new(database));
         let mut ledger = Ledger::new(
             LastMeta::new_zero(),
@@ -97,7 +92,7 @@ mod test {
     fn t_back_block() {
         let secret = Random.generate().unwrap();
 
-        let database = Database::open_default(&random_dir()).map_err(|err| err.to_string()).unwrap();
+        let database = Database::open(&crate::store::schema::database_config(), &random_dir()).map_err(|err| err.to_string()).unwrap();
         let schema = Schema::new(Arc::new(database));
         let mut ledger = Ledger::new(
             LastMeta::new_zero(),

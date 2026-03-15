@@ -1,13 +1,11 @@
 use std::borrow::Cow;
-use std::io::Cursor;
 use std::str::FromStr;
 
-use libp2p::{PeerId, Multiaddr};
+use libp2p::PeerId;
 use cryptocurrency_kit::crypto::{CryptoHash, Hash, hash};
 use cryptocurrency_kit::storage::values::StorageValue;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize, Message, Eq, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, PartialEq)]
 pub enum P2PMsgCode {
     Ping,
     Handshake,
@@ -26,7 +24,7 @@ pub enum BoundType {
     OutBound,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Message)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RawMessage {
     header: Header,
     payload: Payload,
@@ -38,8 +36,8 @@ implement_cryptohash_traits! {RawMessage}
 impl RawMessage {
     pub fn new(header: Header, payload: Vec<u8>) -> Self {
         RawMessage {
-            header: header,
-            payload: payload,
+            header,
+            payload,
         }
     }
 
@@ -74,7 +72,7 @@ implement_storagevalue_traits! {Header}
 
 impl Header {
     pub fn new(code: P2PMsgCode, ttl: usize, create_time: u64, peer_id: Option<Vec<u8>>) -> Self {
-        Header { code: code, ttl: ttl, create_time: create_time, peer_id: peer_id }
+        Header { code, ttl, create_time, peer_id }
     }
 }
 
@@ -94,9 +92,9 @@ impl Handshake {
     pub fn new(version: String, peer_id: PeerId, genesis: Hash) -> Self {
         let peer_id = peer_id.to_base58();
         Handshake {
-            version: version,
-            peer_id: peer_id,
-            genesis: genesis,
+            version,
+            peer_id,
+            genesis,
         }
     }
 

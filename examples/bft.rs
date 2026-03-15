@@ -3,12 +3,10 @@ extern crate consensus;
 extern crate clap;
 #[macro_use]
 extern crate log;
-extern crate actix;
 
-use ::actix::prelude::*;
 use clap::{Arg, App, SubCommand, ArgMatches};
-
 use std::sync::mpsc::channel;
+
 
 fn main() {
     let _config = consensus::config::Config::default();
@@ -42,8 +40,12 @@ fn run(matches: ArgMatches) -> Result<(), String> {
 
 fn run_start(matches: &ArgMatches) -> Result<(), String> {
     let config = matches.value_of("config").expect("config is None");
-    let (tx, rx) = channel();
+    let (tx, _rx) = channel();
     consensus::cmd::start_node(config, tx)?;
-    rx.recv().unwrap();
+    // Block until Ctrl+C
+    tokio::runtime::Runtime::new()
+        .expect("runtime")
+        .block_on(tokio::signal::ctrl_c())
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

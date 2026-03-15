@@ -1,13 +1,10 @@
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::signature::*;
 use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
-use cryptocurrency_kit::storage::keys::StorageKey;
 use cryptocurrency_kit::storage::values::StorageValue;
-use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 
 use std::borrow::Cow;
-use std::io::Cursor;
 
 use crate::common::merkle_tree_root;
 use super::Gas;
@@ -48,11 +45,11 @@ impl Transaction {
     ) -> Self {
         Transaction {
             account_nonce: nonce,
-            gas_price: gas_price,
-            gas_limit: gas_limit,
+            gas_price,
+            gas_limit,
             recipient: Some(to),
-            amount: amount,
-            payload: payload,
+            amount,
+            payload,
             signature: None,
             hash: None,
         }
@@ -85,7 +82,7 @@ impl Transaction {
 
     /// TODO
     pub fn sign(&mut self, _chain_id: u64, secret: &Secret) {
-        let signature = sign_bytes(secret, &TransactionSignature::packet_signature(&self));
+        let signature = sign_bytes(secret, &TransactionSignature::packet_signature(self));
         self.signature = Some(signature.unwrap());
     }
 
@@ -106,11 +103,11 @@ impl Transaction {
     }
 
     pub fn signature_payload(&self) -> Vec<u8> {
-        TransactionSignature::packet_signature(&self)
+        TransactionSignature::packet_signature(self)
     }
 
     pub fn hash_payload(&self) -> Vec<u8> {
-        TransactionSignature::packet_hash(&self)
+        TransactionSignature::packet_hash(self)
     }
 }
 

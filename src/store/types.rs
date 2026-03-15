@@ -1,7 +1,4 @@
 use kvdb::DBTransaction;
-use kvdb_rocksdb::DatabaseIterator;
-
-pub type Iter<'a> = DatabaseIterator<'a>;
 
 
 pub trait Snapshot: 'static {
@@ -11,7 +8,7 @@ pub trait Snapshot: 'static {
         self.get(name, key).is_some()
     }
 
-    fn iter<'a> (&'a self, name: &str, from: &[u8]) -> Iter<'a>;
+    fn iter<'a>(&'a self, name: &str, from: &[u8]) -> Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a>;
 }
 
 pub struct Fork {

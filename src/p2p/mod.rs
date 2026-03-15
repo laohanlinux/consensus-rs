@@ -5,5 +5,4 @@ pub mod server;
 pub mod session;
 pub mod codec;
 pub mod protocol;
-#[macro_use]
 pub use crate::subscriber::*;

@@ -1,15 +1,12 @@
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::Signature;
 use cryptocurrency_kit::storage::values::StorageValue;
-use serde::{Deserialize, Serialize};
 
-use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::io::Cursor;
 
-use crate::types::{Height, block::Block, votes::Votes};
+use crate::types::{Height, block::Block};
 
 pub type Round = u64;
 
@@ -83,7 +80,7 @@ implement_storagevalue_traits! {View}
 
 impl View {
     pub fn new(height: Height, round: Round) -> Self {
-        View { height: height, round: round }
+        View { height, round }
     }
 }
 
@@ -125,8 +122,8 @@ implement_cryptohash_traits! {Subject}
 impl Subject {
     fn new(view: View, digest: Hash) -> Subject {
         Subject {
-            view: view,
-            digest: digest,
+            view,
+            digest,
         }
     }
 }

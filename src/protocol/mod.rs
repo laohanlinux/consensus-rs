@@ -1,23 +1,16 @@
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::ethkey::{public_to_address, recover_bytes};
 use cryptocurrency_kit::ethkey::{
-    Address, KeyPair, Message as sMessage, Public, Secret, Signature,
+    Address, Secret, Signature,
 };
 use cryptocurrency_kit::storage::values::StorageValue;
-use chrono::Local;
-use serde::{Deserialize, Serialize};
-use ::actix::prelude::*;
-
-use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::{Hash as stdHash, Hasher};
-use std::io::Cursor;
-use std::sync::RwLock;
 
 use crate::{
     consensus::types::View,
-    consensus::validator::{self, fn_selector, ImplValidatorSet, ValidatorSet},
+    consensus::validator::{ImplValidatorSet, ValidatorSet},
     types::EMPTY_ADDRESS,
 };
 
@@ -40,7 +33,7 @@ pub enum MessageType {
     RoundChange,
 }
 
-#[derive(Debug, Clone, Message, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GossipMessage {
     pub code: MessageType,
     pub create_time: u64,
@@ -97,7 +90,7 @@ impl GossipMessage {
     }
 
     pub fn get_sign(&self) -> Option<&Signature> {
-        return self.signature.as_ref();
+        self.signature.as_ref()
     }
 
     pub fn address(&mut self) -> Result<Address, String> {
@@ -163,8 +156,8 @@ impl<V> MessageManage<V>
 {
     pub fn new(view: View, val_set: V) -> Self {
         MessageManage {
-            view: view,
-            val_set: val_set,
+            view,
+            val_set,
             messages: HashMap::new(),
         }
     }
