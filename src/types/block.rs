@@ -1,11 +1,7 @@
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash, EMPTY_HASH};
 use cryptocurrency_kit::storage::values::StorageValue;
-use cryptocurrency_kit::ethkey::signature::*;
-use cryptocurrency_kit::ethkey::{Address, Secret, Signature};
-use serde::{Deserialize, Serialize};
-use serde_json::to_string;
+use cryptocurrency_kit::ethkey::{Address, Signature};
 
-use std::io::Cursor;
 use std::borrow::Cow;
 
 use super::transaction::Transaction;
@@ -74,11 +70,11 @@ impl Header {
     }
 
     pub fn block_hash(&self) -> Hash {
-        self.hash_cache.map_or_else(|| {
+        self.hash_cache.unwrap_or_else(|| {
             let mut header = self.clone();
             header.votes = None;
             <Header as CryptoHash>::hash(&header)
-        }, |hash| hash)
+        })
     }
 
     pub fn new_mock(pre_hash: Hash, proposer: Address, tx_hash: Hash, height: Height, tm: Timestamp, extra: Option<Vec<u8>>) -> Self {
@@ -114,6 +110,7 @@ impl Header {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct HeaderBytes<'a> {
     pub prev_hash: Cow<'a, Hash>,
@@ -178,8 +175,8 @@ impl Block {
 
     pub fn new2(header: Header, transactions: Vec<Transaction>) -> Self {
         Block {
-            header: header,
-            transactions: transactions,
+            header,
+            transactions,
         }
     }
 
@@ -206,12 +203,12 @@ impl Block {
     }
 
     pub fn coinbase(&self) -> Address {
-        let coinbase = self.header.proposer;
-        coinbase
+        
+        self.header.proposer
     }
 
     pub fn add_votes(&mut self, signatures: Vec<Signature>) {
-        let ref mut header = self.header;
+        let header = &mut self.header;
         let votes = header.votes.get_or_insert(Votes::new(vec![]));
         votes.add_votes(&signatures);
     }

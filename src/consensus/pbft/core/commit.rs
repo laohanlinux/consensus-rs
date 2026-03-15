@@ -1,17 +1,17 @@
 use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::ethkey::{
-    public_to_address, recover, verify_address, Address, Message as SignMessage, Signature,
+    verify_address, Address, Message as SignMessage, Signature,
 };
 use cryptocurrency_kit::storage::values::StorageValue;
 
-use super::core::Core;
+use super::core::CoreState;
 use crate::{
     consensus::error::{ConsensusError, ConsensusResult},
     consensus::types::{Subject, View},
     consensus::validator::ValidatorSet,
     protocol::{GossipMessage, MessageType, State},
     types::{
-        votes::{decrypt_commit_bytes, encrypt_commit_bytes, Votes},
+        votes::encrypt_commit_bytes,
         Validator,
     },
 };
@@ -35,24 +35,22 @@ pub trait HandleCommit {
     fn accept(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError>;
 }
 
-impl HandleCommit for Core {
+impl HandleCommit for CoreState {
     fn send_commit(&mut self) {
-        let current_state = &self.current_state;
-        let proposal = current_state.proposal().unwrap();
+        let proposal = self.current_state.proposal().unwrap();
         let block = proposal.block();
-        let subject = current_state.subject();
-        self.broadcast_commit(subject.as_ref().unwrap(), block.hash())
+        let subject = self.current_state.subject().as_ref().unwrap().clone();
+        self.broadcast_commit(&subject, block.hash())
     }
 
     fn send_commit_for_old_block(&mut self, view: &View, digest: Hash) {
         let subject = Subject {
-            view: view.clone(),
-            digest: digest,
+            view: *view,
+            digest,
         };
         self.broadcast_commit(&subject, digest)
     }
 
-    // TOOD
     fn broadcast_commit(&mut self, subject: &Subject, _digest: Hash) {
         trace!("broadcast commit");
         let commit_seal = encrypt_commit_bytes(&subject.digest, self.keypair.secret());
@@ -61,11 +59,9 @@ impl HandleCommit for Core {
         self.broadcast(&msg);
     }
 
-    // handle commit type message
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> Result<(), ConsensusError> {
         debug!("Handle commit message from {:?}", src.address());
         let subject = Subject::from(msg.msg());
-        //        let _current_subject = self.current_state.subject().unwrap();
         self.check_message(MessageType::Commit, &subject.view)?;
         let sender = msg.address;
         let subject = Subject::from_bytes(Cow::from(msg.msg()));
@@ -76,9 +72,8 @@ impl HandleCommit for Core {
             self.state,
             msg.trace()
         );
-        <Core as HandleCommit>::accept(self, msg, src)?;
+        <CoreState as HandleCommit>::accept(self, msg, src)?;
         let val_set = self.val_set();
-        // receive more +2/3 votes
         if self.current_state.commits.len() > val_set.two_thirds_majority()
             && self.state < State::Committed
         {
@@ -106,8 +101,7 @@ impl HandleCommit for Core {
             .map_err(|_| {
                 ConsensusError::Unknown("message's sender should be commit seal".to_string())
             })?;
-        let current_state = &self.current_state;
-        let current_subject = current_state.subject().unwrap();
+        let current_subject = self.current_state.subject().unwrap();
         if current_subject.digest != commit_subject.digest
             || current_subject.view != commit_subject.view
         {
@@ -116,9 +110,6 @@ impl HandleCommit for Core {
                 current_subject.digest.short(),
                 commit_subject.digest.short()
             );
-            //return Err(ConsensusError::Unknown(
-            //    "Inconsistent subjects between commit and proposal".to_string(),
-            //));
         }
         Ok(())
     }
@@ -127,6 +118,6 @@ impl HandleCommit for Core {
         self.current_state
             .commits
             .add(msg.clone())
-            .map_err(|err| ConsensusError::Unknown(err))
+            .map_err(ConsensusError::Unknown)
     }
 }

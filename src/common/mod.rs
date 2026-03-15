@@ -7,7 +7,7 @@ use std::env;
 use std::fmt::{self, Display};
 use std::net::{SocketAddr, AddrParseError};
 
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
+use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::merkle_tree::MerkleTree;
 use cryptocurrency_kit::storage::values::StorageValue;
 use libp2p::{
@@ -43,7 +43,7 @@ impl HexBytes {
 
 impl Display for HexBytes {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use std::fmt;
+        
         writeln!(f, "{}", self.string()).unwrap();
         Ok(())
     }
@@ -91,7 +91,7 @@ pub fn random_uuid() -> uuid::Uuid {
 }
 
 
-use ethereum_types::{Address, H160};
+use ethereum_types::Address;
 
 pub fn string_to_address(s: &String) -> Result<Address, String> {
     if s.len() < 40 {
@@ -104,7 +104,7 @@ pub fn string_to_address(s: &String) -> Result<Address, String> {
     if s.len() == 42 {
         return Ok(Address::from_str(&s[2..]).unwrap());
     }
-    Ok(Address::from_str(&s).unwrap())
+    Ok(Address::from_str(s).unwrap())
 }
 
 pub fn strings_to_addresses(strs: &Vec<String>) -> Result<Vec<Address>, String> {

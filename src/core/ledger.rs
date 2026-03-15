@@ -1,8 +1,7 @@
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
-use kvdb_rocksdb::{Database, DatabaseConfig, DatabaseIterator};
+use cryptocurrency_kit::crypto::{CryptoHash, Hash};
 use lru_time_cache::LruCache;
 use parking_lot::RwLock;
-use chrono::{DateTime, TimeZone, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 
 use crate::{
     store::schema::Schema,
@@ -130,8 +129,8 @@ impl Ledger {
                 });
 
                 if let Some(block) = result {
-                    cache.insert(block_hash.clone(), block.clone());
-                    header_cache.insert(block_hash.clone(), block.header().clone());
+                    cache.insert(*block_hash, block.clone());
+                    header_cache.insert(*block_hash, block.header().clone());
                     Some(block)
                 } else {
                     None
@@ -161,7 +160,7 @@ impl Ledger {
             return self.schema.headers().get(&block_hash).map(|header| {
                 let transaction_entry = self.schema.transaction_hashes().get(&block_hash).unwrap();
                 let transactions: Vec<Transaction> = transaction_entry.0.iter().map(|block_hash| {
-                    self.schema.transaction().get(&block_hash).unwrap()
+                    self.schema.transaction().get(block_hash).unwrap()
                 }).collect();
                 Block::new(header, transactions)
             });
@@ -223,7 +222,7 @@ impl Ledger {
         {
             let mut height_db = self.schema.block_hashes_by_height();
 //            debug!("Write height, hash:{:?}, height:{:?}", hash.short(), block.height());
-            height_db.push(hash.clone());
+            height_db.push(hash);
             assert_eq!(height_db.last().unwrap(), hash);
             assert_eq!(height_db.len(), block.height() + 1);
         }
@@ -240,7 +239,10 @@ impl Ledger {
 
         // update last meta
         self.update_meta(block);
-        let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(header.time as i64, 0), Utc);
+        let dt = DateTime::<Utc>::from_naive_utc_and_offset(
+            NaiveDateTime::from_timestamp_opt(header.time as i64, 0).unwrap_or_default(),
+            Utc,
+        );
         info!("📝 Insert new block, hash:{:?}, height:{}, utime:{}, proposer:{:?}", hash.short(), header.height, dt.to_rfc3339(), header.proposer);
     }
 
@@ -281,22 +283,21 @@ mod tests {
     #[test]
     fn db() {
         let dir = env::temp_dir();
-        let db = Database::open_default(dir.to_str().unwrap()).unwrap();
+        let db = Database::open(&crate::store::schema::database_config(), dir).unwrap();
 
         let mut tx = db.transaction();
         (0..100).for_each(|idx| {
             let (key, value) = (format!("tx_{:?}", idx), format!("{:?}", idx + 1));
-            tx.put(None, key.as_bytes(), value.as_bytes());
+            tx.put(0, key.as_bytes(), value.as_bytes());
         });
         db.write(tx).unwrap();
-        db.flush().unwrap();
-        db.iter_from_prefix(None, b"tx_").unwrap().for_each(|kv| {
+        for kv in db.iter_with_prefix(0, b"tx_").filter_map(|r| r.ok()) {
             println!(
                 "{:?}, {:?}",
                 String::from_utf8_lossy(&kv.0),
                 String::from_utf8_lossy(&kv.1)
             );
-        });
+        }
     }
 
     #[test]
@@ -319,8 +320,8 @@ mod tests {
         use cryptocurrency_kit::storage::values::StorageValue;
         use std::borrow::Cow;
         let dir = crate::common::random_dir();
-        let db = Database::open_default("/tmp/block/c1").unwrap();
-        let value = db.get(None, &vec![99, 111, 114, 101, 46, 104, 101, 97, 100, 101, 114, 115, 94, 56, 218, 57, 251, 141, 68, 52, 105, 104, 106, 50, 235, 251, 198, 31, 101, 90, 125, 224, 155, 158, 52, 87, 156, 67, 214, 189, 102, 207, 161, 54]).unwrap();
+        let db = Database::open(&crate::store::schema::database_config(), "/tmp/block/c1").unwrap();
+        let value = db.get(0, &vec![99, 111, 114, 101, 46, 104, 101, 97, 100, 101, 114, 115, 94, 56, 218, 57, 251, 141, 68, 52, 105, 104, 106, 50, 235, 251, 198, 31, 101, 90, 125, 224, 155, 158, 52, 87, 156, 67, 214, 189, 102, 207, 161, 54]).unwrap();
         let header = Header::from_bytes(Cow::from(value.unwrap().as_ref()));
         println!("---> {:?}", header);
 //        let mut ledger = Ledger::new();

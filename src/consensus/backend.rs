@@ -1,43 +1,30 @@
-use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix::{Addr, Arbiter};
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use chrono::Local;
-use chrono_humanize::HumanTime;
-use crossbeam::crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
-use crossbeam::scope;
-use cryptocurrency_kit::common::{to_keccak, to_fixed_array_32};
+use crossbeam::channel::{self, Receiver, RecvTimeoutError, Sender};
+use cryptocurrency_kit::common::to_fixed_array_32;
 use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::crypto::{CryptoHash, Hash, hash, EMPTY_HASH};
 use cryptocurrency_kit::ethkey::{
-    keccak::Keccak256,
-    sign, verify_address, Address, KeyPair, Message, Public, Secret, Signature,
+    sign, verify_address, Address, KeyPair, Message, Signature,
 };
-use futures::future::Err;
-use futures::sync::oneshot;
-use futures::Future;
-use futures::*;
 use lru_time_cache::LruCache;
-use parking_lot::RwLock;
-use tokio_threadpool::ThreadPool;
 
 use super::{
     config::Config,
     consensus::Engine,
-    pbft::core::core::Core,
+    pbft::core::runner::CoreHandle,
     error::{EngineError, EngineResult},
-    events::{MessageEvent, FinalCommittedEvent, NewHeaderEvent, OpCMD},
     types::Proposal,
     validator::{fn_selector, ImplValidatorSet, ValidatorSet},
 };
 use crate::{
     common::merkle_tree_root,
     core::chain::Chain,
-    error::{ChainError, ChainResult},
+    error::ChainError,
     protocol::GossipMessage,
-    subscriber::events::{BroadcastEvent, BroadcastEventSubscriber},
+    subscriber::events::{BroadcastEvent, BroadcastEventBus},
     types::block::{Block, Header},
     types::{Height, Validator, EMPTY_ADDRESS},
 };
@@ -50,7 +37,7 @@ pub trait Backend {
     /// validators returns a set of current validator
     fn validators(&self, height: Height) -> &Self::ValidatorsType;
     /// gossip sends a message to all validators (exclude self)
-    fn gossip(&mut self, vals: &ValidatorSet, msg: GossipMessage) -> EngineResult;
+    fn gossip(&mut self, vals: &dyn ValidatorSet, msg: GossipMessage) -> EngineResult;
     /// commit a proposal with seals
     fn commit(&mut self, proposal: &mut Proposal, seals: Vec<Signature>) -> Result<(), String>;
     /// verifies the proposal. If a err_future_block error is returned,
@@ -71,13 +58,13 @@ pub trait Backend {
 pub fn new_impl_backend(
     keypair: KeyPair,
     chain: Arc<Chain>,
-    subscriber: Addr<BroadcastEventSubscriber>,
+    broadcast_bus: BroadcastEventBus,
 ) -> ImplBackend {
     let request_time = chain.config.request_time.as_millis();
     let block_period = chain.config.block_period.as_secs();
     let config = Config {
         request_time: request_time as u64,
-        block_period: block_period as u64,
+        block_period,
         chain_id: 0,
     };
 
@@ -90,32 +77,33 @@ pub fn new_impl_backend(
     let inbound_cache = LruCache::with_capacity(1 << 10);
     let outbound_cache = LruCache::with_capacity(1 << 10);
     let proposed_block_hash = EMPTY_HASH;
-    let (tx, rx) = crossbeam_channel::bounded(1);
+    let (tx, rx) = channel::bounded(1);
 
     ImplBackend {
-        core_pid: None,
-        broadcast_subscriber: subscriber,
+        core_handle: None,
+        broadcast_bus,
         started: false,
         validaor: Validator::new(keypair.address()),
-        validator_set: validator_set,
+        validator_set,
         key_pair: keypair,
-        inbound_cache: inbound_cache,
-        outbound_cache: outbound_cache,
-        proposed_block_hash: proposed_block_hash,
+        inbound_cache,
+        outbound_cache,
+        proposed_block_hash,
         commit_tx: tx,
         commit_rx: rx,
-        chain: chain,
-        config: config,
+        chain,
+        config,
     }
 }
 
 #[derive(Clone)]
 pub struct ImplBackend {
-    core_pid: Option<Addr<Core>>,
-    broadcast_subscriber: Addr<BroadcastEventSubscriber>,
+    core_handle: Option<CoreHandle>,
+    broadcast_bus: BroadcastEventBus,
     validaor: Validator,
     validator_set: ImplValidatorSet,
     key_pair: KeyPair,
+    #[allow(dead_code)]
     inbound_cache: LruCache<Hash, ()>,
     outbound_cache: LruCache<Hash, ()>,
     proposed_block_hash: Hash,
@@ -138,7 +126,7 @@ impl Backend for ImplBackend {
     }
 
     /// TODO
-    fn gossip(&mut self, vals: &ValidatorSet, msg: GossipMessage) -> EngineResult {
+    fn gossip(&mut self, _vals: &dyn ValidatorSet, msg: GossipMessage) -> EngineResult {
         let msg_hash = msg.hash();
         if self.outbound_cache.get(&msg_hash).is_some() {
             debug!("The message has sent");
@@ -147,16 +135,9 @@ impl Backend for ImplBackend {
         debug!("Broadcast message, {:?}", msg.trace());
 
         self.outbound_cache.insert(msg_hash, ());
-        let core_pid = self.core_pid.as_ref().ok_or(EngineError::EngineNotStarted)?;
-        Arbiter::spawn(core_pid.send(MessageEvent { payload: msg.clone().into_bytes() }).then(|result| {
-            if let Err(ref err) = result {
-                error!("Failed to send message");
-            }
-            trace!("Success to send message");
-            future::ok::<(), ()>(())
-        }).map_err(|err| panic!(err)));
-        self.broadcast_subscriber
-            .do_send(BroadcastEvent::Consensus(msg));
+        let core_handle = self.core_handle.as_ref().ok_or(EngineError::EngineNotStarted)?;
+        core_handle.send_message(msg.clone().into_bytes());
+        self.broadcast_bus.send(BroadcastEvent::Consensus(msg));
         Ok(())
     }
 
@@ -178,7 +159,7 @@ impl Backend for ImplBackend {
                 ChainError::Exists(block_hash) => {
                     trace!("Block hash exists. hash: {:?}", block_hash);
                 }
-                other => {
+                _other => {
                     error!(
                         "Failed to committed a new block, hash:{}, height:{}, proposer:{}",
                         block.hash().short(),
@@ -221,11 +202,11 @@ impl Backend for ImplBackend {
             if transaction_hash != header.tx_hash {
                 return (
                     Duration::from_nanos(0),
-                    Err(EngineError::InvalidTransactionHash(header.tx_hash.clone(), transaction_hash)),
+                    Err(EngineError::InvalidTransactionHash(header.tx_hash, transaction_hash)),
                 );
             }
         }
-        let result = self.verify_header(&header, false);
+        let result = self.verify_header(header, false);
         if let Err(ref err) = result {
             match err {
                 EngineError::FutureBlock => {
@@ -245,7 +226,7 @@ impl Backend for ImplBackend {
     /// TODO
     fn sign(&self, digest: &[u8; 32]) -> Result<Vec<u8>, String> {
         let message = Message::from(digest);
-        match sign(&self.key_pair.secret(), &message) {
+        match sign(self.key_pair.secret(), &message) {
             Ok(signature) => Ok(signature.to_vec()),
             Err(_) => Err("invalid sign".to_string()),
         }
@@ -301,20 +282,17 @@ impl Engine for ImplBackend {
     }
 
     fn stop(&mut self) -> Result<(), String> {
-        let request = self.core_pid.as_ref().unwrap().send(OpCMD::stop);
-        Arbiter::spawn(
-            request
-                .and_then(|_| futures::future::ok(()))
-                .map_err(|err| panic!(err)),
-        );
-        self.core_pid = None;
+        if let Some(ref h) = self.core_handle {
+            h.send_stop();
+        }
+        self.core_handle = None;
         self.started = false;
         Ok(())
     }
 
     // return the proposer
     fn author(&self, header: &Header) -> Result<Address, String> {
-        Ok(header.proposer.clone())
+        Ok(header.proposer)
     }
 
     fn verify_header(&self, header: &Header, seal: bool) -> Result<(), EngineError> {
@@ -348,9 +326,9 @@ impl Engine for ImplBackend {
                 self.validator_set.two_thirds_majority() + 1,
                 header.votes.as_ref().unwrap().len(),
             ))?;
-            if votes.verify_signs(CryptoHash::hash(header), |validator| {
+            if !votes.verify_signs(CryptoHash::hash(header), |validator| {
                 self.validator_set.get_by_address(validator).is_some()
-            }) == false
+            })
             {
                 return Err(EngineError::InvalidSignature);
             }
@@ -376,12 +354,9 @@ impl Engine for ImplBackend {
         if !self.started {
             return Err(EngineError::EngineNotStarted);
         }
-        // send a new round event
-        let core = self.core_pid.as_ref().unwrap().clone();
+        let core = self.core_handle.as_ref().unwrap().clone();
         let proposal = proposal.clone();
-        core.do_send(NewHeaderEvent {
-            proposal: proposal.clone(),
-        });
+        core.send_new_header(proposal);
         Ok(())
     }
 
@@ -391,7 +366,7 @@ impl Engine for ImplBackend {
             header.block_hash(),
             header.height
         );
-        let parent_header = {
+        let _parent_header = {
             self.chain
                 .get_header_by_height(header.height - 1)
                 .ok_or("not found parent block for the header".to_string())?
@@ -410,19 +385,8 @@ impl Engine for ImplBackend {
     // consensus rules that happen at finalization (e.g. block rewards).
     fn finalize(&mut self, _header: &Header) -> Result<(), String> {
         self.proposed_block_hash = EMPTY_HASH;
-        // send a new round event
-        let core = self.core_pid.as_ref().unwrap();
-        let (tx, rx) = crossbeam_channel::bounded(1);
-        let request = core.send(FinalCommittedEvent {});
-        Arbiter::spawn(
-            request
-                .and_then(move |result| {
-                    tx.send(result);
-                    futures::future::ok(())
-                })
-                .map_err(|err| panic!(err)),
-        );
-        rx.recv().unwrap();
+        let core = self.core_handle.as_ref().unwrap().clone();
+        core.send_final_committed();
         Ok(())
     }
 
@@ -433,105 +397,57 @@ impl Engine for ImplBackend {
 
         let header = new_block.mut_header();
 
-        // TODO update new validator
-        // TODO add sign
-        let delay = {
-            let now = chrono::Local::now().timestamp() as u64;
-            if now < header.time {
-                header.time - now
-            } else {
-                0
-            }
+        let delay_ms = {
+            let now_ms = chrono::Local::now().timestamp_millis() as u64;
+            let target_ms = header.time * 1000;
+            target_ms.saturating_sub(now_ms)
         };
 
         info!(
-            "⛏️⛏️⛏👷️ Minnig next block, hash:{:?}, height:{:?}, delay: {}s",
-            header.block_hash().short(), header.height, delay);
-        ::std::thread::sleep(Duration::from_secs(delay));
+            "⛏️⛏️⛏👷️ Minnig next block, hash:{:?}, height:{:?}, delay: {}ms",
+            header.block_hash().short(), header.height, delay_ms);
+        ::std::thread::sleep(Duration::from_millis(delay_ms));
 
-        // add clear function
         self.prepare(header).unwrap();
-        // ready to new consensus
         self.new_chain_header(&Proposal(new_block.clone())).unwrap();
-        let commit_tx = self.commit_rx.clone();
-
-        let mut receover = || {
-            self.finalize(new_block.header()).unwrap();
-        };
-
-        let tx = worker.sender().clone();
-        let new_hash = new_block.hash().clone();
+        let commit_rx = self.commit_rx.clone();
+        let new_hash = new_block.hash();
         let new_height = new_block.height();
-        let res = oneshot::spawn(
-            future::lazy(move || {
-                while true {
-                    if let Err(err) = abort.try_recv() {
-                        match err {
-                            TryRecvError::Disconnected => {
-                                return futures::future::err(EngineError::Interrupt);
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        return futures::future::err(EngineError::Interrupt);
-                    }
 
-                    match commit_tx.recv_timeout(Duration::from_secs(1)) {
-                        Ok(block) => {
-                            let got = block.height() <= new_height;
-                            assert!(got);
-
-                            if block.hash() == new_hash {
-                                return futures::future::ok(block);
-                            }
-                        }
-                        Err(err) => match err {
-                            RecvTimeoutError => {
-                                continue;
-                            }
-                            other => {
-                                panic!(other);
-                            }
-                        },
+        let mut wait_count: u64 = 0;
+        loop {
+            if abort.try_recv().is_ok() {
+                trace!("seal abort, height={}", new_height);
+                return Err(EngineError::Interrupt);
+            }
+            match commit_rx.recv_timeout(Duration::from_secs(1)) {
+                Ok(block) => {
+                    trace!("seal got block height={} hash={:?}", block.height(), block.hash().short());
+                    assert!(block.height() <= new_height);
+                    if block.hash() == new_hash {
+                        self.finalize(new_block.header()).unwrap();
+                        break Ok(());
                     }
                 }
-
-                futures::future::err(EngineError::Interrupt)
-            }),
-            &tx,
-        );
-
-        let chain = self.chain.clone();
-        Arbiter::spawn(
-            res.then(move |res| {
-                match res {
-                    Ok(block) => {
-//                        chain.insert_block(&block);
+                Err(RecvTimeoutError::Timeout) => {
+                    wait_count += 1;
+                    if wait_count % 10 == 1 {
+                        trace!("seal waiting for commit height={} (waited {}s)", new_height, wait_count);
                     }
-                    Err(err) => {
-                        match err {
-                            EngineError::Interrupt | EngineError::FutureBlock => {}
-                            other => {
-                                error!("Consensus fail, err:{:?}", other);
-                            }
-                        }
-                    }
+                    continue;
                 }
-                futures::future::ok::<(), String>(())
-            })
-                .map_err(|err| panic!(err)),
-        );
-        Ok(())
+                Err(_) => {
+                    trace!("seal commit_rx closed, height={}", new_height);
+                    return Err(EngineError::Interrupt);
+                }
+            }
+        }
     }
 }
 
 impl ImplBackend {
-    pub fn set_core_pid(&mut self, core_pid: Addr<Core>) {
-        self.core_pid = Some(core_pid);
-        trace!("Set core pid for backend");
+    pub fn set_core_handle(&mut self, handle: CoreHandle) {
+        self.core_handle = Some(handle);
+        trace!("Set core handle for backend");
     }
-}
-
-lazy_static! {
-pub static ref worker: ThreadPool = ThreadPool::new();
 }

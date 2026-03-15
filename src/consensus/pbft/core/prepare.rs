@@ -1,19 +1,18 @@
 use std::borrow::Cow;
-use std::time::Duration;
 
 use cryptocurrency_kit::storage::values::StorageValue;
 
 
 use crate::{
     consensus::error::{ConsensusError, ConsensusResult},
-    consensus::types::{Subject, View},
+    consensus::types::Subject,
     consensus::validator::ValidatorSet,
     protocol::{GossipMessage, MessageType, State},
     types::Validator,
 };
 
 use super::{
-    core::Core,
+    core::CoreState,
     commit::HandleCommit,
 };
 
@@ -24,17 +23,11 @@ pub trait HandlePrepare {
     fn accept(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult;
 }
 
-impl HandlePrepare for Core {
+impl HandlePrepare for CoreState {
     fn send_prepare(&mut self) {
-        let current_view = self.current_view();
         let subject = self.current_state.subject().as_ref().cloned().unwrap();
         let payload = subject.into_bytes();
-
-        self.broadcast(&GossipMessage::new(
-            MessageType::Prepare,
-            payload,
-            None,
-        ));
+        self.broadcast(&GossipMessage::new(MessageType::Prepare, payload, None));
     }
 
     fn verify_prepare(&mut self, subject: &Subject, _src: &Validator) -> ConsensusResult {
@@ -49,9 +42,10 @@ impl HandlePrepare for Core {
         let subject: Subject = Subject::from_bytes(Cow::from(msg.msg()));
         self.check_message(MessageType::Prepare, &subject.view)?;
         self.verify_prepare(&subject, src)?;
-        <Core as HandlePrepare>::accept(self, msg, src)?;
-        // Add lock hash prove
-        if self.current_state.is_locked() && subject.digest == *self.current_state.get_lock_hash().as_ref().unwrap() {
+        <CoreState as HandlePrepare>::accept(self, msg, src)?;
+        if self.current_state.is_locked()
+            && subject.digest == *self.current_state.get_lock_hash().as_ref().unwrap()
+        {
             self.current_state.lock_hash();
             self.set_state(State::Prepared);
             self.send_commit();
@@ -61,7 +55,6 @@ impl HandlePrepare for Core {
             self.set_state(State::Prepared);
             self.send_commit();
         }
-
         Ok(())
     }
 
@@ -69,6 +62,6 @@ impl HandlePrepare for Core {
         self.current_state
             .prepares
             .add(msg.clone())
-            .map_err(|err| ConsensusError::Unknown(err))
+            .map_err(ConsensusError::Unknown)
     }
 }

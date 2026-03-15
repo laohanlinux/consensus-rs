@@ -1,4 +1,3 @@
-use failure::Error;
 
 use cryptocurrency_kit::crypto::Hash;
 

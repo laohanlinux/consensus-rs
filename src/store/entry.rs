@@ -1,13 +1,12 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
-use cryptocurrency_kit::storage::keys::StorageKey;
+use cryptocurrency_kit::crypto::Hash;
 use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::types::Zero;
 use kvdb_rocksdb::Database;
 
-use super::base_index::{BaseIndex, BaseIndexIter, IndexType};
+use super::base_index::{BaseIndex, IndexType};
 
 #[derive(Debug)]
 pub struct Entry<V> {
@@ -76,7 +75,7 @@ mod tests {
     fn entry() {
         let mut entry: Entry<i32> = Entry::new(
             "IDX_NAME",
-            Arc::new(Database::open_default(&random_dir()).unwrap()),
+            Arc::new(Database::open(&super::schema::database_config(), &random_dir()).unwrap()),
         );
 
         {

@@ -1,16 +1,15 @@
-use std::fmt::{self, LowerHex, Formatter};
 use std::sync::Arc;
 
 use ethereum_types::U256;
 use cryptocurrency_kit::{
     ethkey::Address,
-    crypto::{CryptoHash, Hash, hash},
+    crypto::Hash,
 };
 use transaction_pool::VerifiedTransaction;
 
 
 use crate::{
-    types::{Gas, Height, Timestamp},
+    types::Gas,
     types::transaction::Transaction,
 };
 

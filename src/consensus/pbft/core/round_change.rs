@@ -13,7 +13,7 @@ use crate::{
     types::Validator,
 };
 
-use super::core::Core;
+use super::core::CoreState;
 
 pub trait HandleRoundChange {
     fn send_next_round_change(&mut self);
@@ -22,11 +22,10 @@ pub trait HandleRoundChange {
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult;
 }
 
-impl HandleRoundChange for Core {
+impl HandleRoundChange for CoreState {
     fn send_next_round_change(&mut self) {
         let current_view = self.current_view();
         self.round_change_set.print_info();
-        // Find the max
         let round = self.round_change_set.max_round();
         if round <= current_view.round {
             self.send_round_change(current_view.round + 1);
@@ -48,15 +47,14 @@ impl HandleRoundChange for Core {
         }
         let current_view = self.current_view();
 
-//        let ok = current_view.round < round;
-//        assert!(ok);
-
-        // TODO add pre max round change prove
         let subject = Subject {
             view: View::new(current_view.height, round),
             digest: EMPTY_HASH,
         };
-        debug!("Vote for round change, current:{}, vote: {}", current_view.round, round);
+        debug!(
+            "Vote for round change, current:{}, vote: {}",
+            current_view.round, round
+        );
         let mut msg = GossipMessage::new(MessageType::RoundChange, subject.into_bytes(), None);
         msg.create_time = chrono::Local::now().timestamp_millis() as u64;
         self.broadcast(&msg);
@@ -64,13 +62,20 @@ impl HandleRoundChange for Core {
 
     fn handle(&mut self, msg: &GossipMessage, src: &Validator) -> ConsensusResult {
         let subject: Subject = Subject::from_bytes(Cow::from(msg.msg()));
-        debug!("Handle round change message from {:?}, from me: {}, subject: {:?}", src.address(), self.address() == *src.address(), subject);
+        debug!(
+            "Handle round change message from {:?}, from me: {}, subject: {:?}",
+            src.address(),
+            self.address() == *src.address(),
+            subject
+        );
         self.check_message(MessageType::RoundChange, &subject.view)?;
         let current_view = self.current_view();
         let current_val_set = self.val_set().clone();
         if current_view.round > subject.view.round && subject.view.round > 0 {
-            debug!("round change, current_round:{}, round:{}", current_view.round, subject.view.round, );
-            // may be peer is less than network node
+            debug!(
+                "round change, current_round:{}, round:{}",
+                current_view.round, subject.view.round,
+            );
             self.send_round_change(subject.view.round);
             return Ok(());
         }
@@ -78,22 +83,19 @@ impl HandleRoundChange for Core {
         let n = self
             .round_change_set
             .add(subject.view.round, msg.clone())
-            .map_err(|err| ConsensusError::Unknown(err))?;
-        debug!("round change, current_round:{}, round:{}, votes size {}", current_view.round, subject.view.round, n);
+            .map_err(ConsensusError::Unknown)?;
+        debug!(
+            "round change, current_round:{}, round:{}, votes size {}",
+            current_view.round, subject.view.round, n
+        );
 
-        // check round change more detail
-//        if n >= (current_val_set.two_thirds_majority() + 1)
-//            && (self.wait_round_change && current_view.round < subject.view.round) {
         if n >= (current_val_set.two_thirds_majority() + 1)
-            && (current_view.round < subject.view.round) {
-            // 注意：假设节点刚起动，这时候，其wait_round_change 可能未false，这样即使收到了超过+2/3的票，如果采用
-            //  n == (current_val_set.two_thirds_majority() + 1, 是有问题的
-            // receive more than local round and +2/3 has vote it
+            && (current_view.round < subject.view.round)
+        {
             self.send_round_change(subject.view.round);
-            self.start_new_round(subject.view.round, &vec![]);
+            self.start_new_round(subject.view.round, &[]);
             return Ok(());
         } else if self.wait_round_change && current_view.round < subject.view.round {
-            // receive more than local round
             return Err(ConsensusError::FutureRoundMessage);
         }
         Ok(())

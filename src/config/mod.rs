@@ -1,11 +1,15 @@
 use std::time::Duration;
-use std::collections::HashMap;
 
-use toml::Value as Toml;
 use toml::value::Table;
 use toml::value::Datetime;
 
 use crate::common::random_dir;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BootstrapPeer {
+    pub peer_id: String,
+    pub multiaddr: String,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -24,6 +28,8 @@ pub struct Config {
     pub store: String,
     pub secret: String,
     pub genesis: Option<GenesisConfig>,
+    #[serde(default)]
+    pub bootstrap_peers: Vec<BootstrapPeer>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -51,6 +57,7 @@ impl Default for Config {
             store: *random_dir(),
             secret: "".into(),
             genesis: None,
+            bootstrap_peers: Vec::new(),
         }
     }
 }

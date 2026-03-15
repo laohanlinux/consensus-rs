@@ -1,29 +1,22 @@
 use std::sync::Arc;
 
-use actix::Addr;
 use cryptocurrency_kit::ethkey::Address;
 use cryptocurrency_kit::ethkey::KeyPair;
-use crossbeam::Receiver;
+use crossbeam::channel::Receiver;
 
 use super::{
-    error::{EngineError, EngineResult},
+    error::EngineResult,
     types::Proposal,
     pbft::core::core::Core,
-    backend::{Backend, ImplBackend, new_impl_backend},
-    validator::ImplValidatorSet,
+    pbft::core::runner::CoreHandle,
+    backend::new_impl_backend,
 };
 
 use crate::{
-    subscriber::events::{BroadcastEvent, BroadcastEventSubscriber},
+    subscriber::events::{BroadcastEventBus},
     types::block::{Block, Header},
     core::chain::Chain,
-    consensus::events::OpCMD,
 };
-
-struct BftConfig {
-    request_time: u64,
-    block_period: u64,
-}
 
 pub trait Engine {
     fn start(&mut self) -> Result<(), String>;
@@ -37,24 +30,30 @@ pub trait Engine {
     fn seal(&mut self, new_block: &mut Block, abort: Receiver<()>) -> EngineResult;
 }
 
-pub type SafeEngine = Box<Engine + Send + Sync>;
+pub type SafeEngine = Box<dyn Engine + Send + Sync>;
 
-pub fn create_bft_engine(key_pair: KeyPair, chain: Arc<Chain>, subscriber: Addr<BroadcastEventSubscriber>) -> (Addr<Core>, SafeEngine) {
+pub fn create_bft_engine(key_pair: KeyPair, chain: Arc<Chain>, broadcast_bus: BroadcastEventBus) -> (CoreHandle, SafeEngine) {
     info!("Create bft consensus engine");
-    let mut backend = new_impl_backend(key_pair.clone(), chain.clone(), subscriber);
+    let mut backend = new_impl_backend(key_pair.clone(), chain.clone(), broadcast_bus);
 
-    // use new thread to handle core
-    let (tx, rx) = ::std::sync::mpsc::channel();
-    let core_backend = backend.clone();
-    ::std::thread::spawn(move || {
-        let core = actix::System::run(move || {
-            let core_pid = Core::new(chain, core_backend, key_pair);
-            tx.send(core_pid).unwrap();
-        });
-        ::std::process::exit(core);
+    let (core_tx, core_rx) = crossbeam::channel::unbounded();
+    let core_handle = CoreHandle::new(core_tx);
+    let core_handle_for_run = core_handle.clone();
+
+    let chain_clone = chain.clone();
+    let backend_clone = backend.clone();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        rt.block_on(Core::run(
+            chain_clone,
+            backend_clone,
+            key_pair,
+            core_rx,
+            core_handle_for_run,
+        ));
     });
-    let core_pid = rx.recv().unwrap();
-    backend.set_core_pid(core_pid.clone());
-    let engine_backend: SafeEngine = Box::new(backend.clone()) as SafeEngine;
-    (core_pid, engine_backend)
+
+    backend.set_core_handle(core_handle.clone());
+    let engine_backend: SafeEngine = Box::new(backend);
+    (core_handle, engine_backend)
 }

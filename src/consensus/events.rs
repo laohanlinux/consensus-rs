@@ -1,19 +1,11 @@
 use std::any::{Any, TypeId};
 
-use ::actix::prelude::*;
+use crate::protocol::GossipMessage;
+use super::types::{Proposal, View};
 
-use crate::{
-    protocol::GossipMessage,
-    types::Height,
-};
-use super::{
-    types::{Proposal, View},
-    error::ConsensusResult,
-};
-
-#[derive(Debug, Message)]
+#[derive(Debug, Clone, Copy)]
 pub enum OpCMD {
-    stop,
+    Stop,
     Ping,
 }
 
@@ -24,47 +16,37 @@ pub enum RequestEventType {
 }
 
 pub struct RequestEvent {
+    #[allow(dead_code)]
     proposal: Proposal,
 }
 
+#[allow(dead_code)]
 fn is_view<T: ?Sized + Any>(_s: &T) -> bool {
     TypeId::of::<View>() == TypeId::of::<T>()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NewHeaderEvent {
     pub proposal: Proposal,
 }
 
-impl Message for NewHeaderEvent {
-    type Result = ConsensusResult;
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageEvent {
     pub payload: Vec<u8>,
 }
 
-impl Message for MessageEvent {
-    type Result = ConsensusResult;
-}
-
-#[derive(Debug, Message)]
+#[derive(Debug, Clone)]
 pub struct FinalCommittedEvent {}
 
-#[derive(Debug, Message)]
+#[derive(Debug, Clone)]
 pub struct TimerEvent {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BackLogEvent {
     pub msg: GossipMessage,
 }
 
-impl Message for BackLogEvent {
-    type Result = ConsensusResult;
-}
-
-#[derive(Debug, Message)]
+#[derive(Debug, Clone)]
 pub enum ConsensusEvent {
     NetWork(MessageEvent),
     FinalCommitted(FinalCommittedEvent),

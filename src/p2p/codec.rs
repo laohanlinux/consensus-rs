@@ -2,9 +2,9 @@ use std::borrow::Cow;
 use std::io;
 
 use byteorder::{BigEndian, ByteOrder};
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use cryptocurrency_kit::storage::values::StorageValue;
-use tokio::codec::{Decoder, Encoder};
+use tokio_util::codec::{Decoder, Encoder};
 
 use super::protocol::*;
 
@@ -38,16 +38,18 @@ impl Decoder for MsgPacketCodec {
     }
 }
 
-impl Encoder for MsgPacketCodec {
-    type Item = RawMessage;
+impl Encoder<RawMessage> for MsgPacketCodec {
     type Error = io::Error;
 
     fn encode(&mut self, msg: RawMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let msg = msg.into_bytes();
         let size = msg.len() as u32;
         dst.reserve((size + MSG_SIZE) as usize);
-        dst.put_u32_be(size);
-        dst.put(msg);
+        let mut buf = [0u8; 4];
+        BigEndian::write_u32(&mut buf, size);
+        dst.extend_from_slice(&buf);
+        dst.extend_from_slice(&msg);
         Ok(())
     }
 }
+

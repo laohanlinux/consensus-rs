@@ -1,10 +1,7 @@
-use std::sync::Arc;
 use std::collections::BTreeMap;
 
-use ::actix::prelude::*;
 use priority_queue::PriorityQueue;
-use cryptocurrency_kit::crypto::{Hash, hash, EMPTY_HASH};
-use evmap::{self, WriteHandle, ReadHandle};
+use cryptocurrency_kit::crypto::Hash;
 
 use crate::{
     types::transaction::Transaction,
@@ -23,15 +20,11 @@ pub trait TxPool {
     fn remove_txs(&mut self, tx_hashes: Vec<&Hash>);
 }
 
-pub type SafeTxPool = Box<TxPool + Send + Sync>;
+pub type SafeTxPool = Box<dyn TxPool + Send + Sync>;
 
 pub struct BaseTxPool {
     pq: PriorityQueue<Hash, u64>,
     txs: Vec<BTreeMap<Hash, Transaction>>,
-}
-
-impl Actor for BaseTxPool {
-    type Context = Context<Self>;
 }
 
 impl TxPool for BaseTxPool {
@@ -53,7 +46,7 @@ impl TxPool for BaseTxPool {
             let idx = self.get_idx(tx_hash);
 
             let m = self.txs.get(idx).unwrap();
-            txs.push(m.get(&tx_hash).unwrap());
+            txs.push(m.get(tx_hash).unwrap());
         }
         txs
     }
@@ -61,11 +54,11 @@ impl TxPool for BaseTxPool {
     fn add_tx(&mut self, tx: Transaction) -> Result<u64, TxPoolError> {
         let idx = self.get_idx(tx.get_hash().unwrap());
         let v: &mut BTreeMap<_, _> = self.txs.get_mut(idx).unwrap();
-        if v.get(&tx.get_hash().unwrap()).is_some() {
+        if v.get(tx.get_hash().unwrap()).is_some() {
             return Ok(self.pq.len() as u64);
         }
-        v.insert(tx.get_hash().unwrap().clone(), tx.clone());
-        self.pq.push(tx.get_hash().unwrap().clone(), tx.amount());
+        v.insert(*tx.get_hash().unwrap(), tx.clone());
+        self.pq.push(*tx.get_hash().unwrap(), tx.amount());
         Ok(self.pq.len() as u64)
     }
 
@@ -84,6 +77,12 @@ impl TxPool for BaseTxPool {
             let m: &mut BTreeMap<_, _> = self.txs.get_mut(idx).unwrap();
             m.remove(tx_hash);
         });
+    }
+}
+
+impl Default for BaseTxPool {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

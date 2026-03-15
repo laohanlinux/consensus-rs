@@ -1,5 +1,3 @@
-use std::time::Duration;
-use failure::Error;
 
 use cryptocurrency_kit::crypto::Hash;
 

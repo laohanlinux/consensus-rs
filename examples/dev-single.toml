@@ -1,0 +1,21 @@
+# Single-validator config for local dev - PBFT needs 2f+1, with 1 validator 1 vote is enough
+chain_id = 10
+ip = "127.0.0.1"
+port = 7690
+api_ip = "0.0.0.0"
+api_port = 8960
+block_period = 1000 # ms
+request_time = 5000 # ms
+peer_id = "QmbBr2fHwLFKvHkAq1BpbEr4dvR8P6orQxHkVaxeJsJiW8"
+ttl = 3000
+store = "/tmp/block/dev"
+secret = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+[genesis]
+validator = ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"]
+epoch_time = 2018-09-09T09:09:09.09-09:09
+proposer = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+gas_used = 10000
+extra = "Hello Word!"
+    [genesis.accounts]
+    0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 = 500000

@@ -1,16 +1,19 @@
 use std::sync::Arc;
 
-use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
-use cryptocurrency_kit::storage::values::StorageValue;
-use cryptocurrency_kit::ethkey::Address;
-use kvdb_rocksdb::Database;
+use cryptocurrency_kit::crypto::Hash;
+use kvdb_rocksdb::{Database, DatabaseConfig};
+
+/// Database config with 1 column (schema uses COL=0).
+pub fn database_config() -> DatabaseConfig {
+    DatabaseConfig::with_columns(Some(1))
+}
 
 use super::entry::Entry;
 use super::list_index::ListIndex;
 use super::map_index::MapIndex;
 use crate::{
     types::block::{Block, Header},
-    types::{Validator, ValidatorArray, HashesEntry, Bloom, Height, transaction::Transaction},
+    types::{ValidatorArray, HashesEntry, Height, transaction::Transaction},
 };
 
 macro_rules! define_name {
@@ -118,7 +121,7 @@ mod tests {
 
     #[test]
     fn tschema() {
-        let db = Arc::new(Database::open_default(&random_dir()).unwrap());
+        let db = Arc::new(Database::open(&database_config(), &random_dir()).unwrap());
         let schema = Schema::new(db.clone());
 
         /// block_hashes_by_height

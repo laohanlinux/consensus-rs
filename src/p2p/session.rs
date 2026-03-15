@@ -1,202 +1,169 @@
-use std::borrow::Cow;
-use std::io;
-use std::net;
-use std::str::FromStr;
-use std::sync::mpsc::sync_channel;
 use std::time::Duration;
 
-use ::actix::prelude::*;
 use cryptocurrency_kit::storage::values::StorageValue;
-use futures::stream::once;
-use libp2p::multiaddr::Protocol;
-use libp2p::Multiaddr;
-use libp2p::PeerId;
 use cryptocurrency_kit::crypto::Hash;
-use tokio::{codec::FramedRead, io::WriteHalf, net::TcpListener, net::TcpStream};
+use futures::{SinkExt, StreamExt};
+use libp2p::PeerId;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::time::interval;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
 use super::codec::MsgPacketCodec;
 use super::protocol::{BoundType, RawMessage, Header, P2PMsgCode, Handshake};
-use super::server::{ServerEvent, SessionEvent, TcpServer};
-use crate::common::multiaddr_to_ipv4;
-use crate::error::P2PError;
+use super::server::{ServerEvent, TcpServerHandle};
+
+pub type SessionTx = tokio::sync::mpsc::UnboundedSender<RawMessage>;
 
 pub struct Session {
-    pid: Option<Addr<Session>>,
     peer_id: PeerId,
     local_id: PeerId,
-    server: Addr<TcpServer>,
+    server: TcpServerHandle,
     bound_type: BoundType,
     handshaked: bool,
     genesis: Hash,
-    framed: actix::io::FramedWrite<WriteHalf<TcpStream>, MsgPacketCodec>,
-}
-
-impl Actor for Session {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        // send a handshake message
-        {
-            let peer_id = self.local_id.clone();
-            let handshake = Handshake::new("0.1.1".to_string(), peer_id.clone(), self.genesis.clone());
-            let raw_message = RawMessage::new(
-                Header::new(
-                    P2PMsgCode::Handshake,
-                    10,
-                    chrono::Local::now().timestamp_nanos() as u64,
-                    None,
-                ),
-                handshake.into_bytes(),
-            );
-            ctx.add_message_stream(once(Ok(raw_message)));
-        }
-
-        ctx.run_later(Duration::from_secs(1), |act, ctx| {
-            // pass 1s, not receive handshake packet, close the session
-            if act.handshaked {
-                return;
-            }
-            trace!(
-                "Handshake timeout, {},  local_id: {}, peer: {}",
-                act.handshaked,
-                act.local_id.to_base58(),
-                act.peer_id.to_base58()
-            );
-            act.framed.close();
-            ctx.stop();
-        });
-
-        ctx.run_interval(Duration::from_secs(1), |act, ctx| {
-            if act.handshaked {
-                let raw_msg = RawMessage::new(Header::new(
-                    P2PMsgCode::Ping, 3, chrono::Local::now().timestamp_millis() as u64, None),
-                                              vec![]);
-                ctx.notify(raw_msg);
-            }
-        });
-        trace!("P2P session created");
-    }
-
-    fn stopping(&mut self, _: &mut Self::Context) -> Running {
-        if self.handshaked {
-            self.server
-                .do_send(ServerEvent::Disconnected(self.peer_id.clone()));
-            self.framed.close();
-        }
-        trace!(
-            "P2P session stopped, handshake:{},  local_id: {}, peer: {}",
-            self.handshaked,
-            self.local_id.to_base58(),
-            self.peer_id.to_base58()
-        );
-        Running::Stop
-    }
-}
-
-impl actix::io::WriteHandler<io::Error> for Session {}
-
-/// receive raw message from network, forward it to server
-impl StreamHandler<RawMessage, io::Error> for Session {
-    fn handle(&mut self, msg: RawMessage, ctx: &mut Context<Self>) {
-        debug!("Read message: {:?}, local_id:{:?}, peer_id:{:?}", msg.header(), self.local_id.to_base58(), self.peer_id.to_base58());
-        match msg.header().code {
-            P2PMsgCode::Handshake => {
-                self.server
-                    .send(ServerEvent::Connected(
-                        self.peer_id.clone(),
-                        self.bound_type,
-                        self.pid.as_ref().unwrap().clone(),
-                        msg.clone(),
-                    ))
-                    .into_actor(self)
-                    .then(|res, act, ctx| {
-                        match res {
-                            Ok(res) => {
-                                if let Err(err) = res {
-                                    trace!("Author fail, err: {:?}", err);
-                                    ctx.stop();
-                                } else {
-                                    let peer = res.unwrap();
-                                    act.handshaked = true;
-                                    act.peer_id = peer;
-                                    trace!(
-                                        "Author successfully, local_id: {}, peer: {}",
-                                        act.local_id.to_base58(),
-                                        act.peer_id.to_base58()
-                                    );
-                                }
-                            }
-                            Err(err) => panic!(err),
-                        }
-                        actix::fut::ok(())
-                    })
-                    .wait(ctx);
-            }
-            P2PMsgCode::Transaction => {}
-            P2PMsgCode::Block | P2PMsgCode::Consensus | P2PMsgCode::Sync => {
-                self.server.do_send(ServerEvent::Message(self.peer_id.clone(), msg));
-            }
-            P2PMsgCode::Ping => {
-                assert!(self.handshaked);
-                self.server
-                    .send(ServerEvent::Ping(self.peer_id.clone()))
-                    .into_actor(self)
-                    .then(|res, act, ctx| {
-                        match res {
-                            Ok(res) => {
-                                if res.is_err() {
-                                    ctx.stop();
-                                }
-                            }
-                            Err(err) => panic!(err),
-                        }
-                        actix::fut::ok(())
-                    })
-                    .wait(ctx);
-            }
-            _ => ctx.stop(),
-        }
-    }
-}
-
-/// receive raw message from server, forward it to network
-impl Handler<RawMessage> for Session {
-    type Result = ();
-
-    fn handle(&mut self, msg: RawMessage, _: &mut Context<Self>) {
-        if msg.header().code != P2PMsgCode::Ping {
-            debug!("Write message: {:?}, local_id:{:?}, peer_id:{:?}", msg.header(), self.local_id.to_base58(), self.peer_id.to_base58());
-        }
-        self.framed.write(msg);
-    }
-}
-
-impl Handler<SessionEvent> for Session {
-    type Result = ();
-    fn handle(&mut self, msg: SessionEvent, ctx: &mut Context<Self>) {
-        ctx.stop();
-    }
+    write_tx: SessionTx,
 }
 
 impl Session {
     pub fn new(
-        self_pid: Addr<Session>,
-        self_peer_id: PeerId,
-        local_peer: PeerId,
-        server: Addr<TcpServer>,
-        framed: actix::io::FramedWrite<WriteHalf<TcpStream>, MsgPacketCodec>,
+        peer_id: PeerId,
+        local_id: PeerId,
+        server: TcpServerHandle,
         bound_type: BoundType,
         genesis: Hash,
-    ) -> Session {
+        write_tx: SessionTx,
+    ) -> Self {
         Session {
-            pid: Some(self_pid),
-            peer_id: self_peer_id,
-            local_id: local_peer,
-            server: server,
+            peer_id,
+            local_id,
+            server,
+            bound_type,
             handshaked: false,
-            framed: framed,
-            bound_type: bound_type,
-            genesis: genesis,
+            genesis,
+            write_tx,
         }
+    }
+
+    pub async fn run(
+        mut self,
+        read: impl AsyncRead + Unpin,
+        write: impl AsyncWrite + Unpin,
+        mut write_rx: tokio::sync::mpsc::UnboundedReceiver<RawMessage>,
+    ) {
+        let mut framed_read = FramedRead::new(read, MsgPacketCodec);
+        let mut framed_write = FramedWrite::new(write, MsgPacketCodec);
+
+        // Send handshake
+        let handshake =
+            Handshake::new("0.1.1".to_string(), self.local_id, self.genesis);
+        let raw_message = RawMessage::new(
+            Header::new(
+                P2PMsgCode::Handshake,
+                10,
+                chrono::Local::now().timestamp_nanos() as u64,
+                None,
+            ),
+            handshake.into_bytes(),
+        );
+        if framed_write.send(raw_message).await.is_err() {
+            return;
+        }
+
+        let mut ping_interval = interval(Duration::from_secs(1));
+        let mut handshake_timeout = tokio::time::interval(Duration::from_secs(1));
+        handshake_timeout.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            tokio::select! {
+                msg = framed_read.next() => {
+                    match msg {
+                        Some(Ok(raw_msg)) => {
+                            if self.handle_message(raw_msg, &mut framed_write).await.is_err() {
+                                break;
+                            }
+                        }
+                        Some(Err(e)) => {
+                            debug!("Session read error: {:?}", e);
+                            break;
+                        }
+                        None => break,
+                    }
+                }
+                msg = write_rx.recv() => {
+                    if let Some(raw_msg) = msg {
+                        if raw_msg.header().code != P2PMsgCode::Ping {
+                            debug!("Write message: {:?}, local_id:{:?}, peer_id:{:?}", raw_msg.header(), self.local_id.to_base58(), self.peer_id.to_base58());
+                        }
+                        if framed_write.send(raw_msg).await.is_err() {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                _ = ping_interval.tick() => {
+                    if self.handshaked {
+                        let ping_msg = RawMessage::new(
+                            Header::new(P2PMsgCode::Ping, 3, chrono::Local::now().timestamp_millis() as u64, None),
+                            vec![],
+                        );
+                        if framed_write.send(ping_msg).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+                _ = handshake_timeout.tick() => {
+                    if !self.handshaked {
+                        trace!("Handshake timeout, local_id: {}, peer: {}", self.local_id.to_base58(), self.peer_id.to_base58());
+                        break;
+                    }
+                }
+            }
+        }
+
+        if self.handshaked {
+            self.server.try_send(ServerEvent::Disconnected(self.peer_id));
+        }
+    }
+
+    async fn handle_message(
+        &mut self,
+        msg: RawMessage,
+        _framed_write: &mut FramedWrite<impl AsyncWrite, MsgPacketCodec>,
+    ) -> Result<(), ()> {
+        debug!(
+            "Read message: {:?}, local_id:{:?}, peer_id:{:?}",
+            msg.header(),
+            self.local_id.to_base58(),
+            self.peer_id.to_base58()
+        );
+        match msg.header().code {
+            P2PMsgCode::Handshake => {
+                let result = self
+                    .server
+                    .send(ServerEvent::Connected(
+                        self.peer_id,
+                        self.bound_type,
+                        self.write_tx.clone(),
+                        msg,
+                    ))
+                    .await;
+                match result {
+                    Ok(Ok(peer_id)) => {
+                        self.handshaked = true;
+                        self.peer_id = peer_id;
+                    }
+                    _ => return Err(()),
+                }
+            }
+            P2PMsgCode::Block | P2PMsgCode::Consensus | P2PMsgCode::Sync => {
+                self.server.try_send(ServerEvent::Message(self.peer_id, msg));
+            }
+            P2PMsgCode::Ping => {
+                self.server.try_send(ServerEvent::Ping(self.peer_id));
+            }
+            _ => return Err(()),
+        }
+        Ok(())
     }
 }

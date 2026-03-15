@@ -1,18 +1,14 @@
-use std::io::Cursor;
 use std::sync::Arc;
 use std::{borrow::Cow, marker::PhantomData};
 
 use cryptocurrency_kit::crypto::{hash, CryptoHash, Hash};
 use cryptocurrency_kit::storage::keys::StorageKey;
 use cryptocurrency_kit::storage::values::StorageValue;
-use kvdb::{DBTransaction, DBValue};
-use kvdb_rocksdb::{Database, DatabaseIterator};
-use serde::{Deserialize, Serialize};
-use serde_json::to_string;
+use kvdb::{DBTransaction, KeyValueDB};
+use kvdb_rocksdb::Database;
 
-use super::types::Iter;
 
-const COL: Option<u32> = None;
+const COL: u32 = 0;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub enum IndexType {
@@ -58,12 +54,22 @@ pub struct BaseIndex {
 }
 
 pub struct BaseIndexIter<'a, K, V> {
-    base_iter: Iter<'a>,
+    base_iter: Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)> + 'a>,
     base_prefix_len: usize,
     index_id: Vec<u8>,
     ended: bool,
     _k: PhantomData<K>,
     _v: PhantomData<V>,
+}
+
+impl<K, V> std::fmt::Debug for BaseIndexIter<'_, K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("BaseIndexIter")
+            .field("base_prefix_len", &self.base_prefix_len)
+            .field("index_id", &self.index_id)
+            .field("ended", &self.ended)
+            .finish()
+    }
 }
 
 impl std::fmt::Debug for BaseIndex {
@@ -99,7 +105,7 @@ impl BaseIndex {
 
         if let Some(ref _prefix) = self.index_id {
             prefix_key[name_len..index_len]
-                .copy_from_slice(&self.index_id.as_ref().map_or(&vec![], |item| item));
+                .copy_from_slice(self.index_id.as_ref().map_or(&[], |item| item));
         }
 
         key.write(&mut prefix_key[name_len + index_len..]);
@@ -116,7 +122,7 @@ impl BaseIndex {
             V: StorageValue,
     {
         let key = self.prefix_key(key);
-        if let Some(value) = self.view.get(COL, &key).unwrap() {
+        if let Some(value) = self.view.get(Some(COL), &key).unwrap() {
             return Some(StorageValue::from_bytes(Cow::from(value.as_ref())));
         }
         None
@@ -126,18 +132,20 @@ impl BaseIndex {
         where
             K: StorageKey + ?Sized,
     {
-        self.view.get(COL, &self.prefix_key(key)).unwrap().is_some()
+        self.view.get(Some(COL), &self.prefix_key(key)).unwrap().is_some()
     }
 
-    pub fn iter<P, K, V>(&self, subprefix: &P) -> BaseIndexIter<K, V>
+    pub fn iter<P, K, V>(&self, subprefix: &P) -> BaseIndexIter<'_, K, V>
         where
             P: StorageKey,
             K: StorageKey,
             V: StorageValue,
     {
         let iter_prefix = self.prefix_key(subprefix);
+        let kv_iter = KeyValueDB::iter_from_prefix(self.view.as_ref(), Some(COL), &iter_prefix);
+        let collected: Vec<_> = kv_iter.collect();
         BaseIndexIter {
-            base_iter: self.view.iter_from_prefix(COL, &iter_prefix).unwrap(),
+            base_iter: Box::new(collected.into_iter()),
             base_prefix_len: self.name.len() + self.index_id.as_ref().map_or(0, |p| p.len()),
             index_id: iter_prefix,
             ended: false,
@@ -146,7 +154,7 @@ impl BaseIndex {
         }
     }
 
-    pub fn iter_from<P, F, K, V>(&self, subprefix: &P, from: &F) -> BaseIndexIter<K, V>
+    pub fn iter_from<P, F, K, V>(&self, subprefix: &P, from: &F) -> BaseIndexIter<'_, K, V>
         where
             P: StorageKey,
             F: StorageKey + ?Sized,
@@ -165,8 +173,10 @@ impl BaseIndex {
         //        use std::io::{self, Write};
         //        writeln!(io::stdout(), "iter_prefix {:?}", iter_prefix).unwrap();
 
+        let kv_iter = KeyValueDB::iter_from_prefix(self.view.as_ref(), Some(COL), &iter_prefix);
+        let collected: Vec<_> = kv_iter.collect();
         BaseIndexIter {
-            base_iter: self.view.iter_from_prefix(COL, &iter_prefix).unwrap(),
+            base_iter: Box::new(collected.into_iter()),
             base_prefix_len,
             index_id: Vec::from(&iter_prefix[..base_prefix_len]),
             ended: false,
@@ -186,7 +196,6 @@ impl BaseIndex {
 
     pub fn put_transaction(&self, tx: DBTransaction) {
         self.view.write(tx).unwrap();
-        self.view.flush().unwrap();
     }
 
     pub fn put<K, V>(&mut self, key: &K, value: V)
@@ -196,9 +205,8 @@ impl BaseIndex {
     {
         let key = self.prefix_key(key);
         let mut tx = self.view.transaction();
-        tx.put_vec(COL, &key, value.into_bytes());
+        tx.put_vec(Some(COL), &key, value.into_bytes().to_vec());
         self.view.write(tx).unwrap();
-        self.view.flush().unwrap();
     }
 
     pub fn remove<K>(&mut self, key: &K)
@@ -207,21 +215,18 @@ impl BaseIndex {
     {
         let key = self.prefix_key(key);
         let mut tx = self.view.transaction();
-        tx.delete(COL, &key);
+        tx.delete(Some(COL), &key);
         self.view.write(tx).unwrap();
-        self.view.flush().unwrap();
     }
 
     pub fn clear(&mut self) {
         let prefix = self.prefix_key("");
-        if let Some(iter) = self.view.iter_from_prefix(COL, &prefix) {
-            let mut tx = self.view.transaction();
-            iter.for_each(|item| {
-                tx.delete(COL, &item.0);
-            });
-            self.view.write(tx).unwrap();
-            self.view.flush().unwrap();
+        let iter = KeyValueDB::iter_from_prefix(self.view.as_ref(), Some(COL), &prefix);
+        let mut tx = self.view.transaction();
+        for item in iter {
+            tx.delete(Some(COL), &item.0);
         }
+        self.view.write(tx).unwrap();
     }
 }
 
@@ -251,27 +256,19 @@ impl<'a, K, V> Iterator for BaseIndexIter<'a, K, V>
 }
 
 pub(crate) fn print_str(key: &[u8], value: &[u8]) {
-    use std::io::{self, Write};
-    writeln!(
-        io::stdout(),
-        "key: {}, value: {}",
+    
+    println!("key: {}, value: {}",
         String::from_utf8_lossy(key),
-        String::from_utf8_lossy(value)
-    )
-        .unwrap();
+        String::from_utf8_lossy(value));
 }
 
 pub(crate) fn print_bytes(base_prefix_len: usize, idx: &[u8], key: &[u8], value: &[u8]) {
-    use std::io::{self, Write};
-    writeln!(
-        io::stdout(),
-        "base_prefix_len:{}, idx: {:?}, key: {:?}, value: {:?}",
+    
+    println!("base_prefix_len:{}, idx: {:?}, key: {:?}, value: {:?}",
         base_prefix_len,
         idx,
         key,
-        value
-    )
-        .unwrap();
+        value);
 }
 
 #[cfg(test)]
@@ -286,7 +283,7 @@ mod tests {
 
     #[test]
     fn t() {
-        let db = Arc::new(Database::open_default(&random_dir()).unwrap());
+        let db = Arc::new(Database::open(&kvdb_rocksdb::DatabaseConfig::with_columns(Some(1)), &random_dir()).unwrap());
         {
             let _index = BaseIndex::new("transaction", IndexType::Map, db.clone());
             let mut index = BaseIndex::new("transaction", IndexType::Map, db.clone());
@@ -305,7 +302,7 @@ mod tests {
 
     #[test]
     fn t_iter_from() {
-        let db = Arc::new(Database::open_default(&random_dir()).unwrap());
+        let db = Arc::new(Database::open(&kvdb_rocksdb::DatabaseConfig::with_columns(Some(1)), &random_dir()).unwrap());
         let mut index = BaseIndex::new("transaction", IndexType::List, db.clone());
         let prefix = "block_".to_string();
         (0..100).for_each(|idx| {

@@ -1,10 +1,9 @@
 use std::sync::Arc;
 use std::{cell::Cell, marker::PhantomData};
 
-use cryptocurrency_kit::crypto::*;
-use cryptocurrency_kit::storage::{keys::StorageKey, values::StorageValue};
+use cryptocurrency_kit::storage::values::StorageValue;
 use cryptocurrency_kit::types::Zero;
-use kvdb_rocksdb::{Database, DatabaseIterator};
+use kvdb_rocksdb::Database;
 
 use super::base_index::{BaseIndex, BaseIndexIter, IndexType};
 
@@ -16,14 +15,14 @@ use super::base_index::{BaseIndex, BaseIndexIter, IndexType};
 /// list1: IDX_NAME1,
 /// ListX: IDX_NAMEX,
 
-#[debug]
+#[derive(Debug)]
 pub struct ListIndex<V> {
     base: BaseIndex,
     length: Cell<Option<u64>>,
     _v: PhantomData<V>,
 }
 
-#[debug]
+#[derive(Debug)]
 pub struct ListIndexIter<'a, V> {
     base_iter: BaseIndexIter<'a, u64, V>,
 }
@@ -70,13 +69,13 @@ where
         len
     }
 
-    pub fn iter(&self) -> ListIndexIter<V> {
+    pub fn iter(&self) -> ListIndexIter<'_, V> {
         ListIndexIter {
             base_iter: self.base.iter_from(&Zero, &0_u64),
         }
     }
 
-    pub fn iter_from(&self, from: u64) -> ListIndexIter<V> {
+    pub fn iter_from(&self, from: u64) -> ListIndexIter<'_, V> {
         ListIndexIter {
             base_iter: self.base.iter_from(&Zero, &from),
         }
@@ -110,7 +109,7 @@ where
     where
         I: IntoIterator<Item = V>,
     {
-        use std::io::{self, Write};
+        
         let mut len = self.len();
         for value in iter {
             self.base.put(&len, value);
@@ -233,7 +232,7 @@ mod tests {
     }
     fn newdb() -> Database {
         use crate::common::random_dir;
-        Database::open_default(&random_dir()).unwrap()
+        Database::open(&kvdb_rocksdb::DatabaseConfig::with_columns(Some(1)), &random_dir()).unwrap()
     }
     mod rocksdb_tests {
         use super::*;

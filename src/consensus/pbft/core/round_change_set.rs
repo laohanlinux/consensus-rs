@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     protocol::{MessageManage, GossipMessage},
     consensus::types::{Round, View},
-    consensus::validator::{ValidatorSet, Validators, ImplValidatorSet},
+    consensus::validator::{ValidatorSet, ImplValidatorSet},
 };
 
 type PreRCSignBytes = Vec<Vec<u8>>;
@@ -13,6 +13,7 @@ pub struct RoundChangeSet<V: ValidatorSet> {
     // 当前所有轮次的validators
     round_changes: HashMap<u64, MessageManage>,
     // 每个轮次的消息管理器
+    #[allow(dead_code)]
     pre_rc_sign_bytes: Option<PreRCSignBytes>, // 暂时未用
 }
 
@@ -21,7 +22,7 @@ impl RoundChangeSet<ImplValidatorSet> {
         RoundChangeSet {
             validator_set: validators,
             round_changes: HashMap::new(),
-            pre_rc_sign_bytes: pre_rc_sign_bytes,
+            pre_rc_sign_bytes,
         }
     }
 
